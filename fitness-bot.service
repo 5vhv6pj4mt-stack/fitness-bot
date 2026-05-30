@@ -1,0 +1,16 @@
+[Unit]
+Description=Fitness Bot @stat_sila_bot
+After=network.target
+
+[Service]
+Type=simple
+User=oracle
+WorkingDirectory=/home/oracle/fitness-bot
+ExecStart=/home/oracle/fitness-bot/venv/bin/python bot.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/oracle/fitness-bot/bot.log
+StandardError=append:/home/oracle/fitness-bot/bot.log
+
+[Install]
+WantedBy=multi-user.target

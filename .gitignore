@@ -1,0 +1,24 @@
+# Env и секреты
+.env
+
+# База данных
+fitness.db
+
+# Логи
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Виртуальное окружение
+venv/
+
+# Системное
+.DS_Store
+
+# Большие файлы
+*.xlsx
