@@ -1,8 +1,9 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
+from aiogram.filters import Command
 
-from database.db import get_user, update_user, get_meal_reminders, set_meal_reminder
+from database.db import get_user, update_user, get_meal_reminders, set_meal_reminder, reset_user_program
 from keyboards.keyboards import main_menu
 from states.states import Setup, ReminderSettings
 from handlers.nav import send_nav, track_msg
@@ -67,6 +68,52 @@ async def settings_menu(message: Message):
         parse_mode="HTML",
     )
     track_msg(message.from_user.id, sent.message_id)
+
+
+@router.message(Command("reset"))
+async def reset_program_command(message: Message):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_confirm"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="reset_cancel"),
+        ]
+    ])
+    await message.answer(
+        "⚠️ <b>Сброс программы</b>\n\n"
+        "Ты уверен, что хочешь сбросить прогресс? "
+        "Неделя и день тренировок вернутся к началу (Неделя 1, День 1).",
+        reply_markup=kb,
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "reset_confirm")
+async def cb_reset_confirm(callback: CallbackQuery):
+    try:
+        await reset_user_program(callback.from_user.id)
+        await callback.message.edit_text(
+            "✅ Программа сброшена. Неделя 1, День 1.",
+            reply_markup=None,
+        )
+        await callback.message.answer(
+            "Выбери раздел:",
+            reply_markup=main_menu(),
+        )
+    except Exception as e:
+        await callback.message.edit_text(
+            "❌ Произошла ошибка при сбросе программы. Попробуй позже.",
+            reply_markup=None,
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "reset_cancel")
+async def cb_reset_cancel(callback: CallbackQuery):
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.answer("❌ Сброс отменён")
 
 
 @router.callback_query(F.data == "rem_list")
