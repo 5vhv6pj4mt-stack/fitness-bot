@@ -342,25 +342,32 @@ async def get_exercise_technique(exercise: str) -> str:
 
 
 async def get_exercise_gif(exercise_name: str) -> str | None:
+    from config import RAPIDAPI_KEY
     try:
         english_name = (await _ask(
             "",
             f"Translate this gym exercise name to English. Reply with ONLY the English name, nothing else: {exercise_name}",
             max_tokens=20, temperature=0,
-        )).strip().lower()
+        )).strip()
     except Exception:
-        return None
+        english_name = exercise_name
 
+    if RAPIDAPI_KEY:
+        result = await _get_gif_exercisedb(english_name)
+        if result:
+            return result
+
+    # fallback — wger статичные изображения
     try:
         index = await _get_index()
+        key = english_name.lower()
+        if key in index:
+            return index[key]
+        for name, url in index.items():
+            if key in name or name in key:
+                return url
     except Exception:
-        return None
-
-    if english_name in index:
-        return index[english_name]
-    for name, url in index.items():
-        if english_name in name or name in english_name:
-            return url
+        pass
     return None
 
 
@@ -385,7 +392,65 @@ async def get_nutrition_advice(totals: dict, goals: dict) -> str:
     )
 
 
-# ── Кэш гифок упражнений ─────────────────────────────────────────────────────
+# ── ExerciseDB (RapidAPI) — анимированные GIF ────────────────────────────────
+
+_gif_cache: dict[str, str | None] = {}  # in-memory кэш на сессию
+_GIF_CACHE_FILE = "exercise_gif_cache.json"
+
+
+def _load_gif_cache() -> None:
+    import json, os
+    global _gif_cache
+    if os.path.exists(_GIF_CACHE_FILE):
+        try:
+            with open(_GIF_CACHE_FILE) as f:
+                _gif_cache = json.load(f)
+        except Exception:
+            _gif_cache = {}
+
+
+def _save_gif_cache() -> None:
+    import json
+    try:
+        with open(_GIF_CACHE_FILE, "w") as f:
+            json.dump(_gif_cache, f)
+    except Exception:
+        pass
+
+
+_load_gif_cache()
+
+
+async def _get_gif_exercisedb(english_name: str) -> str | None:
+    from config import RAPIDAPI_KEY
+    key = english_name.lower().strip()
+
+    if key in _gif_cache:
+        return _gif_cache[key]
+
+    try:
+        encoded = key.replace(" ", "%20")
+        url = f"https://exercisedb.p.rapidapi.com/exercises/name/{encoded}?limit=5&offset=0"
+        headers = {
+            "X-RapidAPI-Key": RAPIDAPI_KEY,
+            "X-RapidAPI-Host": "exercisedb.p.rapidapi.com",
+        }
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as s:
+            async with s.get(url, headers=headers) as r:
+                if r.status != 200:
+                    return None
+                data = await r.json()
+
+        gif_url = data[0]["gifUrl"] if data else None
+        _gif_cache[key] = gif_url
+        _save_gif_cache()
+        return gif_url
+    except Exception:
+        return None
+
+
+# ── Кэш wger (fallback, статичные изображения) ───────────────────────────────
 
 _exercise_index: dict[str, str] | None = None
 _index_lock = None

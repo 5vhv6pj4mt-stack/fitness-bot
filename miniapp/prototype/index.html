@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fitness">
+<meta name="theme-color" content="#1c1c1e">
+<link rel="manifest" href="manifest.json">
+<title>Fitness</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none}
+:root{
+  --bg:#1c1c1e;--bg2:#2c2c2e;--bg3:#3a3a3c;--bg4:#48484a;
+  --text:#ffffff;--hint:#8e8e93;--sep:rgba(255,255,255,0.08);
+  --blue:#0a84ff;--green:#30d158;--orange:#ff9f0a;--red:#ff453a;--purple:#bf5af2;
+  --nav-h:72px;
+}
+body{background:#000;display:flex;justify-content:center;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.phone{width:min(390px,100vw);min-height:100vh;background:var(--bg);position:relative;display:flex;flex-direction:column;overflow:hidden}
+.screen{display:none;flex:1;overflow-y:auto;padding-bottom:calc(var(--nav-h) + 8px)}
+.screen.active{display:block}
+
+/* ── SHARED COMPONENTS ── */
+.page-header{padding:16px 16px 8px;display:flex;align-items:center;gap:10px}
+.page-header h1{font-size:22px;font-weight:700;color:var(--text);flex:1}
+.page-header .sub{font-size:13px;color:var(--hint);margin-top:2px}
+.back-btn{width:32px;height:32px;background:var(--bg2);border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;flex-shrink:0}
+.card{background:var(--bg2);border-radius:16px;padding:16px;margin:0 12px 10px}
+.card-title{font-size:13px;font-weight:600;color:var(--hint);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px}
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600}
+.badge-blue{background:rgba(10,132,255,0.15);color:var(--blue)}
+.badge-green{background:rgba(48,209,88,0.15);color:var(--green)}
+.badge-orange{background:rgba(255,159,10,0.15);color:var(--orange)}
+.badge-purple{background:rgba(191,90,242,0.15);color:var(--purple)}
+.btn{width:100%;padding:15px;border-radius:13px;border:none;font-size:16px;font-weight:600;cursor:pointer;transition:opacity 0.15s,transform 0.1s}
+.btn:active{transform:scale(0.97);opacity:0.85}
+.btn-primary{background:var(--blue);color:#fff}
+.btn-secondary{background:var(--bg3);color:var(--text)}
+.btn-green{background:var(--green);color:#fff}
+.btn-danger{background:var(--red);color:#fff}
+.row{display:flex;gap:8px}
+.sep{height:1px;background:var(--sep);margin:0 16px}
+
+/* ── BOTTOM NAV ── */
+.bottom-nav{position:fixed;bottom:0;width:min(390px,100vw);height:var(--nav-h);background:rgba(28,28,30,0.92);backdrop-filter:blur(20px);border-top:1px solid var(--sep);display:flex;align-items:center;z-index:100}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;padding:8px 2px;transition:opacity 0.15s;min-width:0}
+.nav-item .nav-icon{font-size:22px;line-height:1;flex-shrink:0}
+.nav-item .nav-label{font-size:9px;color:var(--hint);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.nav-item.active .nav-label{color:var(--blue)}
+.nav-item.active .nav-icon{filter:brightness(0) saturate(100%) invert(47%) sepia(99%) saturate(1496%) hue-rotate(195deg) brightness(102%) contrast(96%)}
+
+/* ════════════════════════════
+   SCREEN 1 — DASHBOARD
+════════════════════════════ */
+.dash-header{padding:20px 16px 8px;display:flex;justify-content:space-between;align-items:flex-start}
+.dash-greeting{font-size:24px;font-weight:700;color:var(--text)}
+.dash-date{font-size:14px;color:var(--hint);margin-top:2px}
+.dash-avatar{width:36px;height:36px;background:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px}
+
+.nutrition-card{background:var(--bg2);border-radius:16px;padding:16px;margin:0 12px 10px}
+.nutrition-inner{display:flex;align-items:center;gap:16px}
+.ring-wrap{position:relative;flex-shrink:0}
+.ring-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ring-kcal{font-size:18px;font-weight:700;color:var(--text)}
+.ring-sub{font-size:10px;color:var(--hint);margin-top:1px}
+.macros{flex:1;display:flex;flex-direction:column;gap:8px}
+.macro-row{display:flex;align-items:center;gap:8px}
+.macro-label{font-size:12px;color:var(--hint);width:14px;font-weight:600}
+.macro-bar-wrap{flex:1;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.macro-bar{height:100%;border-radius:3px;transition:width 0.5s}
+.macro-val{font-size:11px;color:var(--hint);width:52px;text-align:right}
+
+.workout-today{background:var(--bg2);border-radius:16px;padding:16px;margin:0 12px 10px}
+.wt-meta{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.wt-exercises{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.wt-ex{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--text)}
+.wt-ex .dot{width:6px;height:6px;background:var(--blue);border-radius:50%;flex-shrink:0}
+.wt-more{font-size:12px;color:var(--hint)}
+
+.week-stat{background:var(--bg2);border-radius:16px;padding:14px 16px;margin:0 12px 10px;display:flex;align-items:center;justify-content:space-between}
+.ws-left .ws-title{font-size:14px;color:var(--text);font-weight:600}
+.ws-left .ws-sub{font-size:12px;color:var(--hint);margin-top:2px}
+.ws-right{text-align:right}
+.ws-tonnage{font-size:20px;font-weight:700;color:var(--green)}
+.ws-delta{font-size:12px;color:var(--hint)}
+
+/* ════════════════════════════
+   SCREEN 2 — WORKOUT
+════════════════════════════ */
+.workout-header{padding:12px 16px;display:flex;align-items:center;justify-content:space-between;background:var(--bg)}
+.wh-left{display:flex;align-items:center;gap:10px}
+.wh-title{font-size:16px;font-weight:600;color:var(--text)}
+.wh-sub{font-size:12px;color:var(--hint)}
+.wh-timer{font-size:18px;font-weight:700;color:var(--orange);font-variant-numeric:tabular-nums}
+.ex-progress{padding:4px 16px 0;display:flex;gap:4px}
+.ex-dot{height:3px;border-radius:2px;flex:1;background:var(--bg3);transition:background 0.3s}
+.ex-dot.done{background:var(--green)}
+.ex-dot.current{background:var(--blue)}
+
+/* workout screen needs extra padding for the input dock */
+#s-workout{padding-bottom:calc(var(--nav-h) + 270px)}
+
+.ex-card{margin:10px 12px 0;background:var(--bg2);border-radius:16px;overflow:hidden}
+.ex-card-top{padding:14px 16px 12px}
+.ex-name{font-size:20px;font-weight:700;color:var(--text);margin-bottom:6px}
+.ex-muscles{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.ex-hint{background:rgba(48,209,88,0.08);border-top:1px solid rgba(48,209,88,0.15);padding:10px 16px;font-size:13px;color:var(--green);line-height:1.4}
+.ex-hint .hint-arrow{margin:0 4px}
+
+/* inline technique */
+.tech-il-gif{position:relative;aspect-ratio:16/9;background:var(--bg3);overflow:hidden}
+.tech-il-gif img{width:100%;height:100%;object-fit:cover;display:block}
+.tech-il-shimmer{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;background:var(--bg3)}
+.tech-il-shimmer .shimmer-rect{width:90%;height:14px;background:var(--bg4);border-radius:4px;animation:shimmer 1.4s infinite linear}
+@keyframes shimmer{0%{opacity:.4}50%{opacity:.9}100%{opacity:.4}}
+.tech-il-tips{padding:12px 16px 14px;display:flex;flex-direction:column;gap:7px}
+.tech-il-tip{display:flex;gap:9px;align-items:flex-start}
+.tech-il-num{width:20px;height:20px;border-radius:50%;background:rgba(10,132,255,0.15);color:var(--blue);font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px}
+.tech-il-text{font-size:13px;color:var(--text);line-height:1.45}
+
+.sets-table{width:100%;border-collapse:collapse;margin:0 0 10px}
+.sets-table th{font-size:11px;color:var(--hint);text-align:center;padding:0 4px 6px;font-weight:500}
+.sets-table th:first-child{text-align:left}
+.sets-table td{font-size:13px;color:var(--text);text-align:center;padding:5px 4px;border-top:1px solid var(--sep)}
+.sets-table td:first-child{text-align:left;color:var(--hint)}
+.sets-table tr.done-row td{color:var(--hint)}
+.sets-table .check{color:var(--green);font-size:12px}
+.sets-wrap{padding:12px 16px 4px;border-top:1px solid var(--sep)}
+
+/* ── INPUT DOCK — fixed above bottom nav ── */
+.input-dock{position:fixed;bottom:var(--nav-h);left:50%;transform:translateX(-50%);width:min(390px,100vw);background:var(--bg);border-top:1px solid var(--sep);padding:10px 12px 8px;z-index:90}
+.dock-label{font-size:13px;color:var(--hint);font-weight:500;margin-bottom:8px;text-align:center}
+.dock-steppers{display:flex;gap:8px;margin-bottom:8px}
+.dock-steppers .stepper{flex:1;margin-bottom:0}
+.stepper{display:flex;align-items:center;background:var(--bg2);border-radius:12px;overflow:hidden;border:1px solid var(--sep)}
+.stepper-btn{width:48px;height:52px;background:none;border:none;color:var(--blue);font-size:24px;font-weight:300;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s}
+.stepper-btn:active{background:var(--bg3)}
+.stepper-val{flex:1;text-align:center;font-size:19px;font-weight:700;color:var(--text)}
+.stepper-unit{font-size:11px;color:var(--hint);font-weight:400;margin-left:2px}
+
+.rpe-wrap{margin-bottom:8px}
+.rpe-label{font-size:11px;color:var(--hint);margin-bottom:6px;text-align:center}
+.rpe-pills{display:flex;gap:5px}
+.rpe-pill{flex:1;padding:7px 0;background:var(--bg2);border-radius:10px;font-size:13px;font-weight:600;color:var(--hint);text-align:center;cursor:pointer;transition:all 0.15s;border:1.5px solid transparent}
+.rpe-pill.selected{background:rgba(10,132,255,0.15);border-color:var(--blue);color:var(--blue)}
+
+.rest-bar{margin:4px 0 0;background:rgba(255,159,10,0.08);border-radius:10px;padding:8px 14px;display:flex;align-items:center;justify-content:space-between}
+.rest-left{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--hint)}
+.rest-timer-val{font-size:18px;font-weight:700;color:var(--orange);font-variant-numeric:tabular-nums}
+.rest-skip{font-size:12px;color:var(--blue);cursor:pointer;padding:4px 8px}
+
+.finish-btn-wrap{margin:8px 12px 0}
+
+/* ════════════════════════════
+   SCREEN 3 — NUTRITION
+════════════════════════════ */
+.nutr-header{padding:20px 16px 8px}
+.nutr-header h1{font-size:22px;font-weight:700;color:var(--text)}
+.nutr-header .sub{font-size:13px;color:var(--hint);margin-top:2px}
+
+.nutr-summary{background:var(--bg2);border-radius:16px;padding:16px;margin:0 12px 10px}
+.nutr-top{display:flex;align-items:center;gap:20px;margin-bottom:14px}
+.nutr-macros{flex:1;display:flex;flex-direction:column;gap:9px}
+.nm-row{display:flex;align-items:center;gap:8px}
+.nm-name{font-size:12px;color:var(--hint);width:40px;font-weight:600}
+.nm-bar-wrap{flex:1;height:7px;background:var(--bg3);border-radius:4px;overflow:hidden}
+.nm-bar{height:100%;border-radius:4px}
+.nm-val{font-size:11px;color:var(--hint);width:60px;text-align:right}
+.kcal-goal{text-align:center;font-size:13px;color:var(--hint);margin-top:4px}
+.kcal-goal span{color:var(--text);font-weight:600}
+
+.meals-list{margin:0 12px 10px}
+.meal-group{background:var(--bg2);border-radius:16px;padding:0;margin-bottom:10px;overflow:hidden}
+.meal-group-header{padding:12px 16px 8px;display:flex;justify-content:space-between;align-items:center}
+.mgh-name{font-size:13px;font-weight:600;color:var(--text)}
+.mgh-time{font-size:12px;color:var(--hint)}
+.mgh-kcal{font-size:13px;font-weight:600;color:var(--orange)}
+.meal-item{padding:10px 16px;border-top:1px solid var(--sep)}
+.mi-name{font-size:14px;color:var(--text);margin-bottom:3px}
+.mi-macros{font-size:12px;color:var(--hint)}
+.mi-macros span{margin-right:10px}
+
+.nutr-add{padding:0 12px 0;display:flex;gap:8px}
+.add-btn-big{flex:1;padding:14px;background:var(--bg2);border-radius:13px;border:1.5px dashed var(--bg4);font-size:15px;font-weight:600;color:var(--blue);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background 0.15s}
+.add-btn-big:active{background:var(--bg3)}
+.voice-btn{padding:14px 20px;background:var(--bg2);border-radius:13px;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;border:none}
+.voice-btn:active{background:var(--bg3)}
+
+/* ════════════════════════════
+   SCREEN 4 — PROGRESS
+════════════════════════════ */
+.prog-tabs{display:flex;padding:8px 12px;gap:6px;overflow-x:auto;scrollbar-width:none}
+.prog-tabs::-webkit-scrollbar{display:none}
+.prog-tab{padding:7px 16px;background:var(--bg2);border-radius:20px;font-size:13px;font-weight:500;color:var(--hint);cursor:pointer;white-space:nowrap;transition:all 0.2s;border:1.5px solid transparent;flex-shrink:0}
+.prog-tab.active{background:rgba(10,132,255,0.12);border-color:var(--blue);color:var(--blue)}
+
+.chart-card{background:var(--bg2);border-radius:16px;padding:16px;margin:0 12px 10px}
+.chart-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}
+.chart-title{font-size:15px;font-weight:600;color:var(--text)}
+.chart-val{font-size:22px;font-weight:700;color:var(--text)}
+.chart-delta{font-size:13px;color:var(--green);margin-left:6px}
+.chart-sub{font-size:12px;color:var(--hint);margin-bottom:12px}
+.chart-svg-wrap{border-radius:8px;overflow:hidden}
+
+.stats-row{display:flex;gap:8px;margin:0 12px 10px}
+.stat-card{flex:1;background:var(--bg2);border-radius:13px;padding:13px}
+.stat-val{font-size:22px;font-weight:700;color:var(--text)}
+.stat-label{font-size:12px;color:var(--hint);margin-top:3px}
+
+.prs-card{background:var(--bg2);border-radius:16px;margin:0 12px 10px;overflow:hidden}
+.prs-header{padding:14px 16px 8px;font-size:13px;font-weight:600;color:var(--hint);text-transform:uppercase;letter-spacing:0.5px}
+.pr-item{display:flex;align-items:center;padding:11px 16px;border-top:1px solid var(--sep)}
+.pr-ex{flex:1;font-size:14px;color:var(--text);font-weight:500}
+.pr-weight{font-size:15px;font-weight:700;color:var(--text)}
+.pr-badge{font-size:11px;background:rgba(255,159,10,0.15);color:var(--orange);padding:2px 7px;border-radius:10px;margin-left:8px;font-weight:600}
+
+/* ════════════════════════════
+   SCREEN 5 — PROGRAM
+════════════════════════════ */
+.cycle-card{background:var(--bg2);border-radius:16px;padding:16px;margin:0 12px 10px}
+.cycle-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.cycle-name{font-size:18px;font-weight:700;color:var(--text)}
+.cycle-week{font-size:13px;color:var(--hint);margin-top:3px}
+.cycle-dots{display:flex;gap:6px}
+.c-dot{width:10px;height:10px;border-radius:50%}
+.c-dot.done{background:var(--blue)}
+.c-dot.current{background:var(--orange)}
+.c-dot.todo{background:var(--bg3)}
+.cycle-progress{background:var(--bg3);border-radius:4px;height:4px;overflow:hidden;margin-bottom:8px}
+.cycle-progress-fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--purple));border-radius:4px;transition:width 0.5s}
+.cycle-hint{font-size:12px;color:var(--hint)}
+
+.days-list{margin:0 12px 10px;display:flex;flex-direction:column;gap:8px}
+.day-item{background:var(--bg2);border-radius:14px;overflow:hidden;cursor:pointer}
+.day-header{display:flex;align-items:center;gap:12px;padding:14px 16px}
+.day-icon{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.day-icon.done{background:rgba(48,209,88,0.12)}
+.day-icon.current{background:rgba(10,132,255,0.12)}
+.day-icon.todo{background:var(--bg3)}
+.day-info{flex:1}
+.day-name{font-size:15px;font-weight:600;color:var(--text)}
+.day-meta{font-size:12px;color:var(--hint);margin-top:2px}
+.day-chevron{font-size:12px;color:var(--bg4);transition:transform 0.2s}
+.day-item.open .day-chevron{transform:rotate(90deg)}
+
+.day-exercises{display:none;border-top:1px solid var(--sep);padding:0 16px 12px}
+.day-item.open .day-exercises{display:block}
+.dex-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--sep)}
+.dex-item:last-child{border-bottom:none}
+.dex-num{font-size:12px;color:var(--hint);width:18px;flex-shrink:0}
+.dex-name{flex:1;font-size:14px;color:var(--text)}
+.dex-sets{font-size:12px;color:var(--hint)}
+
+.next-cycle{margin:0 12px 10px;background:rgba(191,90,242,0.08);border:1px solid rgba(191,90,242,0.2);border-radius:13px;padding:13px 16px;display:flex;align-items:center;justify-content:space-between}
+.nc-left .nc-title{font-size:14px;font-weight:600;color:var(--text)}
+.nc-left .nc-sub{font-size:12px;color:var(--hint);margin-top:2px}
+.nc-days{font-size:22px;font-weight:700;color:var(--purple)}
+
+/* ── TAB CONTENT ── */
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* ════════════════════════════
+   PROFILE / SETTINGS
+════════════════════════════ */
+.profile-hero{background:var(--bg2);padding:28px 16px 20px;display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:10px}
+.profile-avatar-big{width:76px;height:76px;background:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;font-weight:700;color:#fff;position:relative}
+.edit-av{position:absolute;bottom:0;right:0;width:24px;height:24px;background:var(--bg3);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;border:2px solid var(--bg)}
+.profile-name{font-size:21px;font-weight:700;color:var(--text)}
+.profile-since{font-size:12px;color:var(--hint)}
+.profile-stats{display:flex;width:100%;border-top:1px solid var(--sep);padding-top:16px;margin-top:6px}
+.ps-item{flex:1;text-align:center}
+.ps-item+.ps-item{border-left:1px solid var(--sep)}
+.ps-val{font-size:20px;font-weight:700;color:var(--text)}
+.ps-label{font-size:11px;color:var(--hint);margin-top:3px}
+
+.settings-group{background:var(--bg2);border-radius:16px;margin:0 12px 10px;overflow:hidden}
+.sg-title{font-size:12px;font-weight:600;color:var(--hint);text-transform:uppercase;letter-spacing:0.5px;padding:14px 16px 6px}
+.sr{display:flex;align-items:center;padding:13px 16px;border-top:1px solid var(--sep);cursor:pointer}
+.sr:first-of-type{border-top:none}
+.sr-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;margin-right:12px;flex-shrink:0}
+.sr-label{flex:1;font-size:15px;color:var(--text)}
+.sr-value{font-size:14px;color:var(--hint);margin-right:6px}
+.sr-chevron{color:var(--bg4);font-size:16px}
+.sr-danger .sr-label{color:var(--red)}
+
+.toggle{width:48px;height:28px;background:var(--bg3);border-radius:14px;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0}
+.toggle.on{background:var(--green)}
+.toggle::after{content:'';position:absolute;width:22px;height:22px;background:#fff;border-radius:50%;top:3px;left:3px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.3)}
+.toggle.on::after{transform:translateX(20px)}
+
+/* ════════════════════════════
+   ADD FOOD v2
+════════════════════════════ */
+.step{display:none}
+.step.active{display:block}
+
+/* Header */
+.af-header{padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between}
+.af-title{font-size:18px;font-weight:700;color:var(--text)}
+.af-meal-pill{display:flex;align-items:center;gap:6px;padding:7px 14px;background:var(--bg2);border-radius:20px;font-size:13px;font-weight:600;color:var(--text);border:1.5px solid var(--sep);cursor:pointer;transition:background .15s;user-select:none}
+.af-meal-pill:active{background:var(--bg3)}
+.af-meal-dot{width:8px;height:8px;border-radius:50%;background:var(--blue);flex-shrink:0}
+
+/* Progress mini */
+.af-progress{padding:0 16px 14px}
+.afp-bar-wrap{height:5px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-bottom:5px}
+.afp-bar{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--blue),var(--purple))}
+.afp-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--hint)}
+
+/* Repeat button */
+.af-repeat{margin:0 12px 16px;padding:13px 16px;background:var(--bg2);border-radius:14px;display:flex;align-items:center;gap:12px;cursor:pointer;border:1px solid var(--sep);transition:background .15s}
+.af-repeat:active{background:var(--bg3)}
+.af-repeat-text{flex:1}
+.af-repeat-title{font-size:14px;font-weight:600;color:var(--text)}
+.af-repeat-sub{font-size:12px;color:var(--hint);margin-top:2px}
+
+/* Recent foods */
+.af-section-label{font-size:11px;font-weight:600;color:var(--hint);text-transform:uppercase;letter-spacing:.6px;padding:0 16px;margin-bottom:10px}
+.recent-scroll{padding:0 12px;overflow-x:auto;display:flex;gap:9px;scrollbar-width:none;margin-bottom:18px}
+.recent-scroll::-webkit-scrollbar{display:none}
+.recent-card{flex-shrink:0;width:120px;background:var(--bg2);border-radius:14px;padding:12px 12px 10px;cursor:pointer;border:1.5px solid transparent;transition:all .15s;display:flex;flex-direction:column}
+.recent-card:active{background:var(--bg3);border-color:var(--blue)}
+.rc-emoji{font-size:22px;margin-bottom:6px}
+.rc-name{font-size:13px;font-weight:600;color:var(--text);line-height:1.25;margin-bottom:3px}
+.rc-meta{font-size:11px;color:var(--hint)}
+.rc-kcal{font-size:14px;font-weight:700;color:var(--orange);margin-top:5px}
+
+/* Voice FAB */
+.voice-section{display:flex;flex-direction:column;align-items:center;padding:4px 12px 16px}
+.voice-fab{width:78px;height:78px;background:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:32px;cursor:pointer;transition:transform .15s,box-shadow .15s;box-shadow:0 6px 28px rgba(10,132,255,.5);margin-bottom:12px;border:none;flex-shrink:0}
+.voice-fab:active{transform:scale(.92);box-shadow:0 3px 14px rgba(10,132,255,.35)}
+.voice-fab.recording{background:#ff453a;box-shadow:0 6px 28px rgba(255,69,58,.5);animation:recPulse 1s ease-in-out infinite}
+@keyframes recPulse{0%,100%{box-shadow:0 6px 28px rgba(255,69,58,.5)}50%{box-shadow:0 6px 36px rgba(255,69,58,.8)}}
+.voice-fab-label{font-size:16px;font-weight:700;color:var(--text);margin-bottom:3px}
+.voice-fab-sub{font-size:12px;color:var(--hint);margin-bottom:16px;text-align:center}
+.voice-text-link{font-size:14px;color:var(--blue);cursor:pointer;padding:9px 22px;background:var(--bg2);border-radius:20px;font-weight:500;transition:background .15s}
+.voice-text-link:active{background:var(--bg3)}
+
+/* Text input (shown on demand) */
+.food-textarea{width:calc(100% - 24px);margin:0 12px 12px;display:block;background:var(--bg2);border:1.5px solid var(--bg3);border-radius:14px;padding:14px;font-size:16px;color:var(--text);font-family:inherit;resize:none;height:110px;outline:none;transition:border-color .2s;line-height:1.5}
+.food-textarea:focus{border-color:var(--blue)}
+.food-textarea::placeholder{color:var(--hint)}
+
+/* Portion chips (step 3) */
+.parsed-item-v2{padding:14px 16px;border-bottom:1px solid var(--sep)}
+.parsed-item-v2:last-child{border-bottom:none}
+.pi-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.pi-kcal-live{font-size:14px;font-weight:700;color:var(--orange);margin-left:auto;flex-shrink:0}
+.portion-chips{display:flex;gap:6px;flex-wrap:wrap}
+.pc{padding:7px 14px;background:var(--bg3);border-radius:20px;font-size:13px;font-weight:600;color:var(--hint);cursor:pointer;border:1.5px solid transparent;transition:all .15s;white-space:nowrap}
+.pc.active{background:rgba(10,132,255,.15);border-color:var(--blue);color:var(--blue)}
+
+/* Food save dock */
+.food-save-dock{position:fixed;bottom:var(--nav-h);left:50%;transform:translateX(-50%);width:min(390px,100vw);background:var(--bg);border-top:1px solid var(--sep);padding:10px 12px 8px;z-index:90}
+.fsd-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.fsd-kcal{font-size:20px;font-weight:700;color:var(--text)}
+.fsd-macros{font-size:13px;color:var(--hint);flex:1}
+.fsd-delta{font-size:12px;color:var(--green);font-weight:600}
+
+/* keep old classes still used */
+.meal-chips{display:flex;gap:8px;padding:0 12px;overflow-x:auto;scrollbar-width:none;margin-bottom:12px}
+.meal-chips::-webkit-scrollbar{display:none}
+.meal-chip{padding:7px 16px;background:var(--bg2);border-radius:20px;font-size:13px;font-weight:500;color:var(--hint);cursor:pointer;white-space:nowrap;border:1.5px solid transparent;flex-shrink:0;transition:all .15s}
+.meal-chip.selected{background:rgba(10,132,255,.12);border-color:var(--blue);color:var(--blue)}
+
+/* AI Loading */
+.ai-loading{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:80px 20px;gap:20px}
+.ai-spinner{width:72px;height:72px;background:rgba(10,132,255,.1);border-radius:50%;display:flex;align-items:center;justify-content:center;animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.12);opacity:.75}}
+.ai-dots{display:flex;gap:7px}
+.ai-dot{width:9px;height:9px;background:var(--blue);border-radius:50%;animation:dotPulse 1.2s ease-in-out infinite}
+.ai-dot:nth-child(2){animation-delay:.2s}
+.ai-dot:nth-child(3){animation-delay:.4s}
+@keyframes dotPulse{0%,60%,100%{transform:scale(1);opacity:.4}30%{transform:scale(1.4);opacity:1}}
+.ai-loading-text{font-size:16px;font-weight:600;color:var(--text)}
+.ai-loading-sub{font-size:13px;color:var(--hint);margin-top:-12px;text-align:center}
+
+/* AI Result */
+.ai-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;background:rgba(10,132,255,.1);border-radius:20px;font-size:12px;color:var(--blue);font-weight:600;margin:0 12px 10px}
+.parsed-items{background:var(--bg2);border-radius:16px;margin:0 12px 10px;overflow:hidden}
+.parsed-item{display:flex;align-items:center;padding:12px 16px;border-bottom:1px solid var(--sep)}
+.parsed-item:last-child{border-bottom:none}
+.pi-emoji{font-size:20px;margin-right:10px;flex-shrink:0}
+.pi-info{flex:1}
+.pi-name{font-size:14px;color:var(--text);font-weight:500}
+.pi-weight{font-size:12px;color:var(--hint);margin-top:2px}
+.pi-kcal{font-size:13px;font-weight:700;color:var(--orange);margin-left:10px;flex-shrink:0}
+.pi-remove{font-size:18px;color:var(--bg4);cursor:pointer;padding:4px;margin-left:6px;flex-shrink:0}
+
+.macro-result-card{background:var(--bg2);border-radius:16px;margin:0 12px 10px;padding:16px}
+.macro-result-title{font-size:12px;color:var(--hint);font-weight:600;text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.mrg{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px}
+.mrg-item{text-align:center;background:var(--bg3);border-radius:12px;padding:11px 4px}
+.mrg-val{font-size:20px;font-weight:700;color:var(--text)}
+.mrg-label{font-size:10px;color:var(--hint);margin-top:2px}
+.macro-edit-row{display:flex;align-items:center;padding:10px 0;border-bottom:1px solid var(--sep)}
+.macro-edit-row:last-child{border-bottom:none}
+.mer-label{width:80px;font-size:14px;color:var(--text)}
+.mer-input{flex:1;background:var(--bg3);border:1.5px solid transparent;border-radius:8px;padding:7px 10px;font-size:15px;font-weight:600;color:var(--text);text-align:right;outline:none;font-family:inherit;transition:border-color .2s}
+.mer-input:focus{border-color:var(--blue)}
+.mer-unit{font-size:13px;color:var(--hint);margin-left:8px;width:26px}
+
+.time-row{display:flex;align-items:center;gap:10px;padding:0 12px;margin-bottom:12px}
+.time-label{font-size:14px;color:var(--hint)}
+.time-input{background:var(--bg2);border:1.5px solid var(--bg3);border-radius:10px;padding:8px 14px;font-size:15px;font-weight:600;color:var(--text);outline:none;font-family:inherit;width:88px;text-align:center}
+
+/* Water tracker */
+.water-card{margin:0 12px 10px;background:var(--bg2);border-radius:14px;padding:13px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.water-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px}
+.water-glasses{display:flex;gap:4px;margin-bottom:5px}
+.wg{width:22px;height:22px;border-radius:5px;background:var(--bg3);border:1.5px solid var(--bg4);transition:all .2s}
+.wg.wg-full{background:rgba(10,132,255,.7);border-color:var(--blue)}
+.water-sub{font-size:11px;color:var(--hint)}
+.water-add-btn{padding:9px 16px;background:rgba(10,132,255,.12);border:1.5px solid rgba(10,132,255,.3);border-radius:20px;font-size:13px;font-weight:600;color:var(--blue);cursor:pointer;white-space:nowrap;transition:background .15s;flex-shrink:0}
+.water-add-btn:active{background:rgba(10,132,255,.25)}
+
+/* Water settings chips */
+.wset-chip{padding:6px 14px;background:var(--bg3);border-radius:20px;font-size:13px;font-weight:500;color:var(--hint);cursor:pointer;border:1.5px solid transparent;transition:all .15s}
+.wset-chip.active{background:rgba(10,132,255,.15);border-color:var(--blue);color:var(--blue)}
+
+/* Toast */
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);background:#30d158;color:#fff;padding:12px 22px;border-radius:30px;font-size:14px;font-weight:600;z-index:300;opacity:0;transition:opacity .3s,transform .3s;white-space:nowrap;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ════════════════════════════
+   TECHNIQUE MODAL (bottom sheet)
+════════════════════════════ */
+.tech-handle{width:36px;height:4px;background:var(--bg3);border-radius:2px;margin:12px auto 0}
+.tech-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 8px}
+.tech-name{font-size:18px;font-weight:700;color:var(--text)}
+.tech-close{width:30px;height:30px;background:var(--bg2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;cursor:pointer;color:var(--hint)}
+.tech-source{padding:0 16px 10px;display:flex;align-items:center;gap:6px}
+.tech-source-badge{display:flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(10,132,255,.1);border-radius:20px;font-size:11px;color:var(--blue);font-weight:600}
+.tech-gif-wrap{margin:0 12px 14px;border-radius:16px;overflow:hidden;background:var(--bg2);aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;position:relative}
+.tech-gif{width:100%;height:100%;object-fit:cover;display:block}
+.tech-gif-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--bg2)}
+.gif-shimmer{width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,var(--bg3),var(--bg4));animation:shimmer 1.5s ease-in-out infinite}
+@keyframes shimmer{0%,100%{opacity:.5}50%{opacity:1}}
+.tech-muscles{padding:0 16px 12px;display:flex;gap:8px;flex-wrap:wrap}
+.muscle-tag{padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600}
+.muscle-primary{background:rgba(255,69,58,.12);color:var(--red)}
+.muscle-secondary{background:rgba(10,132,255,.1);color:var(--blue)}
+.tech-tips{margin:0 12px;background:var(--bg2);border-radius:14px;padding:14px 16px}
+.tech-tips-title{font-size:12px;font-weight:600;color:var(--hint);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.tech-tip{display:flex;align-items:flex-start;gap:10px;padding:6px 0;border-bottom:1px solid var(--sep);font-size:14px;color:var(--text);line-height:1.4}
+.tech-tip:last-child{border-bottom:none}
+.tech-tip-num{width:22px;height:22px;background:var(--blue);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0;margin-top:1px}
+/* ── PWA INSTALL BANNER ── */
+.pwa-banner{position:fixed;top:0;left:50%;transform:translateX(-50%);width:min(390px,100vw);background:var(--bg2);border-bottom:1px solid var(--sep);padding:12px 16px;display:flex;align-items:center;gap:12px;z-index:200;transition:transform 0.3s;backdrop-filter:blur(20px)}
+.pwa-banner.hidden{transform:translateX(-50%) translateY(-100%)}
+.pwa-icon{width:40px;height:40px;background:var(--blue);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.pwa-text{flex:1}
+.pwa-title{font-size:13px;font-weight:600;color:var(--text)}
+.pwa-sub{font-size:11px;color:var(--hint);margin-top:2px}
+.pwa-btn{padding:7px 14px;background:var(--blue);border-radius:9px;font-size:13px;font-weight:600;color:#fff;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.pwa-close{font-size:18px;color:var(--hint);cursor:pointer;padding:4px;flex-shrink:0}
+</style>
+</head>
+<body>
+<!-- PWA Install Banner -->
+<div class="pwa-banner hidden" id="pwa-banner">
+  <div class="pwa-icon">💪</div>
+  <div class="pwa-text">
+    <div class="pwa-title">Добавить на рабочий стол</div>
+    <div class="pwa-sub">Быстрый доступ без браузера</div>
+  </div>
+  <div class="pwa-btn" id="pwa-install-btn">Добавить</div>
+  <div class="pwa-close" onclick="dismissPWA()">✕</div>
+</div>
+
+<div class="phone">
+
+<!-- ══════════════════════════════
+     SCREEN 1 — DASHBOARD
+══════════════════════════════ -->
+<div class="screen active" id="s-home">
+  <div class="dash-header">
+    <div>
+      <div class="dash-greeting">Привет, Кирилл 👋</div>
+      <div class="dash-date">Понедельник, 8 июня</div>
+    </div>
+    <div class="dash-avatar" onclick="showScreen('s-profile')" style="cursor:pointer">К</div>
+  </div>
+
+  <!-- Питание -->
+  <div class="nutrition-card">
+    <div class="card-title">Питание сегодня</div>
+    <div class="nutrition-inner">
+      <div class="ring-wrap">
+        <svg width="100" height="100" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#3a3a3c" stroke-width="9"/>
+          <circle cx="50" cy="50" r="38" fill="none" stroke="#0a84ff" stroke-width="9"
+            stroke-linecap="round" stroke-dasharray="238.76" stroke-dashoffset="83.6"
+            transform="rotate(-90 50 50)"/>
+        </svg>
+        <div class="ring-center">
+          <div class="ring-kcal">2140</div>
+          <div class="ring-sub">из 3300</div>
+        </div>
+      </div>
+      <div class="macros">
+        <div class="macro-row">
+          <span class="macro-label">Б</span>
+          <div class="macro-bar-wrap"><div class="macro-bar" style="width:84%;background:#0a84ff"></div></div>
+          <span class="macro-val">168 / 200г</span>
+        </div>
+        <div class="macro-row">
+          <span class="macro-label">Ж</span>
+          <div class="macro-bar-wrap"><div class="macro-bar" style="width:72%;background:#ff9f0a"></div></div>
+          <span class="macro-val">61 / 85г</span>
+        </div>
+        <div class="macro-row">
+          <span class="macro-label">У</span>
+          <div class="macro-bar-wrap"><div class="macro-bar" style="width:60%;background:#30d158"></div></div>
+          <span class="macro-val">210 / 350г</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Тренировка -->
+  <div class="workout-today">
+    <div class="card-title">Тренировка сегодня</div>
+    <div class="wt-meta">
+      <span class="badge badge-orange">Объёмная неделя</span>
+      <span class="badge badge-blue">Верх — Объём</span>
+    </div>
+    <div class="wt-exercises">
+      <div class="wt-ex"><span class="dot"></span>Жим штанги лёжа · 4×8 · 80кг</div>
+      <div class="wt-ex"><span class="dot"></span>Тяга верхнего блока · 4×10 · 70кг</div>
+      <div class="wt-ex"><span class="dot"></span>Жим гантелей наклонный · 3×10</div>
+      <div class="wt-more">+ ещё 3 упражнения</div>
+    </div>
+    <button class="btn btn-primary" onclick="showScreen('s-workout')">💪 Начать тренировку</button>
+  </div>
+
+  <!-- Неделя -->
+  <div class="week-stat">
+    <div class="ws-left">
+      <div class="ws-title">Эта неделя</div>
+      <div class="ws-sub">2 тренировки выполнено</div>
+    </div>
+    <div class="ws-right">
+      <div class="ws-tonnage">18 400 кг</div>
+      <div class="ws-delta">↑ +1 240кг к прошлой</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════
+     SCREEN 2 — WORKOUT
+══════════════════════════════ -->
+<div class="screen" id="s-workout">
+  <div class="workout-header">
+    <div class="wh-left">
+      <div class="back-btn" onclick="showScreen('s-home')">←</div>
+      <div>
+        <div class="wh-title">Верх — Объём</div>
+        <div class="wh-sub" id="ex-counter">Упражнение 1 из 6</div>
+      </div>
+    </div>
+    <div class="wh-timer" id="wt-timer">00:00</div>
+  </div>
+
+  <!-- Progress dots -->
+  <div class="ex-progress" id="ex-progress">
+    <div class="ex-dot current"></div>
+    <div class="ex-dot"></div>
+    <div class="ex-dot"></div>
+    <div class="ex-dot"></div>
+    <div class="ex-dot"></div>
+    <div class="ex-dot"></div>
+  </div>
+
+  <!-- Exercise card -->
+  <div class="ex-card">
+
+    <!-- Name + muscles -->
+    <div class="ex-card-top">
+      <div class="ex-name">Жим штанги лёжа</div>
+      <div class="ex-muscles" id="il-muscles"></div>
+    </div>
+
+    <!-- Inline technique GIF -->
+    <div class="tech-il-gif" id="il-gif-wrap">
+      <div class="tech-il-shimmer" id="il-shimmer">
+        <div style="font-size:28px">🏋️</div>
+        <div class="shimmer-rect" style="width:70%;height:10px"></div>
+        <div class="shimmer-rect" style="width:50%;height:10px"></div>
+      </div>
+      <img id="il-gif-img" src="" alt="" style="display:none" onload="ilGifLoaded()" onerror="ilGifError()">
+    </div>
+
+    <!-- Progression hint -->
+    <div class="ex-hint" id="ex-hint">Прошлый раз: 80.0 × 8, RPE 7.5 <span class="hint-arrow">→</span> попробуй <strong>82.5 кг</strong></div>
+
+    <!-- Technique tips -->
+    <div class="tech-il-tips" id="il-tips"></div>
+
+    <!-- Sets table -->
+    <div class="sets-wrap">
+      <table class="sets-table" id="sets-table">
+        <thead>
+          <tr>
+            <th>Подход</th><th>Вес</th><th>Повт</th><th>RPE</th>
+          </tr>
+        </thead>
+        <tbody id="sets-body"></tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <div class="finish-btn-wrap">
+    <button class="btn btn-secondary" onclick="showScreen('s-home')">Завершить тренировку</button>
+  </div>
+</div>
+
+<!-- ── INPUT DOCK (fixed, workout screen only) ── -->
+<div class="input-dock" id="input-dock" style="display:none">
+  <!-- Rest timer (shown during rest) -->
+  <div class="rest-bar" id="rest-bar" style="display:none;margin-bottom:8px">
+    <div class="rest-left">⏱ Отдых</div>
+    <div class="rest-timer-val" id="rest-val">2:00</div>
+    <div class="rest-skip" onclick="skipRest()">Пропустить</div>
+  </div>
+
+  <div class="dock-label" id="set-label">Подход 1 из 4</div>
+
+  <!-- Weight + Reps side by side -->
+  <div class="dock-steppers">
+    <div class="stepper" id="weight-stepper">
+      <button class="stepper-btn" onclick="changeWeight(-2.5)">−</button>
+      <div class="stepper-val"><span id="weight-val">82.5</span><span class="stepper-unit">кг</span></div>
+      <button class="stepper-btn" onclick="changeWeight(2.5)">+</button>
+    </div>
+    <div class="stepper" id="reps-stepper">
+      <button class="stepper-btn" onclick="changeReps(-1)">−</button>
+      <div class="stepper-val"><span id="reps-val">8</span><span class="stepper-unit">повт</span></div>
+      <button class="stepper-btn" onclick="changeReps(1)">+</button>
+    </div>
+  </div>
+
+  <!-- RPE -->
+  <div class="rpe-wrap">
+    <div class="rpe-label">RPE — усилие</div>
+    <div class="rpe-pills">
+      <div class="rpe-pill" onclick="selectRPE(this, 7)">7</div>
+      <div class="rpe-pill" onclick="selectRPE(this, 7.5)">7.5</div>
+      <div class="rpe-pill selected" onclick="selectRPE(this, 8)">8</div>
+      <div class="rpe-pill" onclick="selectRPE(this, 8.5)">8.5</div>
+      <div class="rpe-pill" onclick="selectRPE(this, 9)">9</div>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" style="margin-top:0" onclick="recordSet()">✓ ЗАПИСАТЬ ПОДХОД</button>
+</div>
+
+
+<!-- ══════════════════════════════
+     SCREEN 3 — NUTRITION
+══════════════════════════════ -->
+<div class="screen" id="s-nutrition">
+  <div class="nutr-header">
+    <h1>Питание</h1>
+    <div class="sub">Понедельник, 8 июня</div>
+  </div>
+
+  <div class="nutr-summary">
+    <div class="nutr-top">
+      <div class="ring-wrap">
+        <svg width="110" height="110" viewBox="0 0 110 110">
+          <circle cx="55" cy="55" r="44" fill="none" stroke="#3a3a3c" stroke-width="10"/>
+          <circle cx="55" cy="55" r="44" fill="none" stroke="#0a84ff" stroke-width="10"
+            stroke-linecap="round" stroke-dasharray="276.46" stroke-dashoffset="96.76"
+            transform="rotate(-90 55 55)"/>
+          <!-- protein arc -->
+          <circle cx="55" cy="55" r="31" fill="none" stroke="#30d158" stroke-width="6"
+            stroke-linecap="round" stroke-dasharray="194.78" stroke-dashoffset="31.16"
+            transform="rotate(-90 55 55)" opacity="0.7"/>
+        </svg>
+        <div class="ring-center">
+          <div class="ring-kcal" style="font-size:20px">2140</div>
+          <div class="ring-sub">ккал</div>
+        </div>
+      </div>
+      <div class="nutr-macros">
+        <div class="nm-row">
+          <span class="nm-name" style="color:#0a84ff">Белки</span>
+          <div class="nm-bar-wrap"><div class="nm-bar" style="width:84%;background:#0a84ff"></div></div>
+          <span class="nm-val">168 / 200г</span>
+        </div>
+        <div class="nm-row">
+          <span class="nm-name" style="color:#ff9f0a">Жиры</span>
+          <div class="nm-bar-wrap"><div class="nm-bar" style="width:72%;background:#ff9f0a"></div></div>
+          <span class="nm-val">61 / 85г</span>
+        </div>
+        <div class="nm-row">
+          <span class="nm-name" style="color:#30d158">Углев</span>
+          <div class="nm-bar-wrap"><div class="nm-bar" style="width:60%;background:#30d158"></div></div>
+          <span class="nm-val">210 / 350г</span>
+        </div>
+      </div>
+    </div>
+    <div class="kcal-goal">Осталось <span>1 160 ккал</span> до цели</div>
+  </div>
+
+  <div class="meals-list">
+    <div class="meal-group">
+      <div class="meal-group-header">
+        <div><div class="mgh-name">🌅 Завтрак</div><div class="mgh-time">08:15</div></div>
+        <div class="mgh-kcal">580 ккал</div>
+      </div>
+      <div class="meal-item">
+        <div class="mi-name">Овсянка с бананом</div>
+        <div class="mi-macros"><span>Б 12г</span><span>Ж 6г</span><span>У 72г</span><span>320 ккал</span></div>
+      </div>
+      <div class="meal-item">
+        <div class="mi-name">Творог 5%, 200г</div>
+        <div class="mi-macros"><span>Б 22г</span><span>Ж 5г</span><span>У 6г</span><span>260 ккал</span></div>
+      </div>
+    </div>
+
+    <div class="meal-group">
+      <div class="meal-group-header">
+        <div><div class="mgh-name">☀️ Обед</div><div class="mgh-time">13:30</div></div>
+        <div class="mgh-kcal">720 ккал</div>
+      </div>
+      <div class="meal-item">
+        <div class="mi-name">Куриная грудка отварная, 200г</div>
+        <div class="mi-macros"><span>Б 47г</span><span>Ж 4г</span><span>У 0г</span><span>240 ккал</span></div>
+      </div>
+      <div class="meal-item">
+        <div class="mi-name">Рис бурый варёный, 200г</div>
+        <div class="mi-macros"><span>Б 5г</span><span>Ж 2г</span><span>У 64г</span><span>280 ккал</span></div>
+      </div>
+      <div class="meal-item">
+        <div class="mi-name">Огурец, помидор</div>
+        <div class="mi-macros"><span>Б 2г</span><span>Ж 0г</span><span>У 8г</span><span>200 ккал</span></div>
+      </div>
+    </div>
+
+    <div class="meal-group">
+      <div class="meal-group-header">
+        <div><div class="mgh-name">🌆 Перекус</div><div class="mgh-time">16:00</div></div>
+        <div class="mgh-kcal">210 ккал</div>
+      </div>
+      <div class="meal-item">
+        <div class="mi-name">Протеиновый батончик</div>
+        <div class="mi-macros"><span>Б 20г</span><span>Ж 8г</span><span>У 18г</span><span>210 ккал</span></div>
+      </div>
+    </div>
+
+    <div class="meal-group">
+      <div class="meal-group-header">
+        <div><div class="mgh-name">🌙 Ужин</div><div class="mgh-time">19:30</div></div>
+        <div class="mgh-kcal">630 ккал</div>
+      </div>
+      <div class="meal-item">
+        <div class="mi-name">Лосось запечённый, 150г</div>
+        <div class="mi-macros"><span>Б 32г</span><span>Ж 18г</span><span>У 0г</span><span>310 ккал</span></div>
+      </div>
+      <div class="meal-item">
+        <div class="mi-name">Картофель запечённый, 200г</div>
+        <div class="mi-macros"><span>Б 4г</span><span>Ж 1г</span><span>У 40г</span><span>190 ккал</span></div>
+      </div>
+      <div class="meal-item">
+        <div class="mi-name">Брокколи на пару, 150г</div>
+        <div class="mi-macros"><span>Б 4г</span><span>Ж 0г</span><span>У 8г</span><span>130 ккал</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Water tracker -->
+  <div class="water-card">
+    <div class="water-left">
+      <div class="water-title">💧 Вода</div>
+      <div class="water-glasses" id="water-glasses">
+        <div class="wg wg-full"></div>
+        <div class="wg wg-full"></div>
+        <div class="wg wg-full"></div>
+        <div class="wg wg-full"></div>
+        <div class="wg wg-full"></div>
+        <div class="wg"></div>
+        <div class="wg"></div>
+        <div class="wg"></div>
+      </div>
+      <div class="water-sub" id="water-sub">5 из 8 стаканов</div>
+    </div>
+    <button class="water-add-btn" onclick="addWater()">+ стакан</button>
+  </div>
+
+  <div class="nutr-add">
+    <div class="add-btn-big" onclick="showScreen('s-add-food')">＋ Добавить приём пищи</div>
+    <div class="voice-btn" onclick="showScreen('s-add-food')">🎤</div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════
+     SCREEN 4 — PROGRESS
+══════════════════════════════ -->
+<div class="screen" id="s-progress">
+  <div class="page-header">
+    <h1>Прогресс</h1>
+  </div>
+
+  <div class="prog-tabs">
+    <div class="prog-tab active" onclick="showProgTab(this,'tab-tonnage')">Тоннаж</div>
+    <div class="prog-tab" onclick="showProgTab(this,'tab-weights')">Веса</div>
+    <div class="prog-tab" onclick="showProgTab(this,'tab-nutr')">Питание</div>
+    <div class="prog-tab" onclick="showProgTab(this,'tab-body')">Тело</div>
+  </div>
+
+  <!-- TAB: ТОННАЖ -->
+  <div class="tab-content active" id="tab-tonnage">
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">Тоннаж по неделям</div>
+      </div>
+      <div style="margin-bottom:12px">
+        <span class="chart-val">9 200 кг</span>
+        <span class="chart-delta">↑ +3.4%</span>
+      </div>
+      <div class="chart-sub">Текущая неделя — рекорд</div>
+      <div class="chart-svg-wrap">
+        <svg viewBox="0 0 358 140" width="100%" height="140" xmlns="http://www.w3.org/2000/svg">
+          <!-- Grid lines -->
+          <line x1="0" y1="35" x2="358" y2="35" stroke="#3a3a3c" stroke-width="1"/>
+          <line x1="0" y1="70" x2="358" y2="70" stroke="#3a3a3c" stroke-width="1"/>
+          <line x1="0" y1="105" x2="358" y2="105" stroke="#3a3a3c" stroke-width="1"/>
+          <!-- Grid labels -->
+          <text x="4" y="33" fill="#48484a" font-size="9">10к</text>
+          <text x="4" y="68" fill="#48484a" font-size="9">8к</text>
+          <text x="4" y="103" fill="#48484a" font-size="9">6к</text>
+          <!-- Fill area -->
+          <defs>
+            <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#0a84ff" stop-opacity="0.3"/>
+              <stop offset="100%" stop-color="#0a84ff" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <polygon points="20,109 71,97 122,107 173,85 224,77 275,90 326,56 357,47 357,130 20,130"
+            fill="url(#chartGrad)"/>
+          <!-- Line -->
+          <polyline points="20,109 71,97 122,107 173,85 224,77 275,90 326,56 357,47"
+            fill="none" stroke="#0a84ff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+          <!-- Dots -->
+          <circle cx="20" cy="109" r="3.5" fill="#0a84ff"/>
+          <circle cx="71" cy="97" r="3.5" fill="#0a84ff"/>
+          <circle cx="122" cy="107" r="3.5" fill="#0a84ff"/>
+          <circle cx="173" cy="85" r="3.5" fill="#0a84ff"/>
+          <circle cx="224" cy="77" r="3.5" fill="#0a84ff"/>
+          <circle cx="275" cy="90" r="3.5" fill="#0a84ff"/>
+          <circle cx="326" cy="56" r="3.5" fill="#0a84ff"/>
+          <circle cx="357" cy="47" r="5" fill="#0a84ff" stroke="#1c1c1e" stroke-width="2"/>
+          <!-- X labels -->
+          <text x="14" y="140" fill="#8e8e93" font-size="9" text-anchor="middle">Н-7</text>
+          <text x="65" y="140" fill="#8e8e93" font-size="9" text-anchor="middle">Н-6</text>
+          <text x="116" y="140" fill="#8e8e93" font-size="9" text-anchor="middle">Н-5</text>
+          <text x="167" y="140" fill="#8e8e93" font-size="9" text-anchor="middle">Н-4</text>
+          <text x="218" y="140" fill="#8e8e93" font-size="9" text-anchor="middle">Н-3</text>
+          <text x="269" y="140" fill="#8e8e93" font-size="9" text-anchor="middle">Н-2</text>
+          <text x="320" y="140" fill="#8e8e93" font-size="9" text-anchor="middle">Н-1</text>
+          <text x="353" y="140" fill="#0a84ff" font-size="9" text-anchor="middle" font-weight="700">Сейчас</text>
+        </svg>
+      </div>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-val">24</div>
+        <div class="stat-label">Тренировок</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color:var(--orange)">8.1</div>
+        <div class="stat-label">Средний RPE</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" style="color:var(--green)">62кг</div>
+        <div class="stat-label">Вес тела</div>
+      </div>
+    </div>
+
+    <div class="prs-card">
+      <div class="prs-header">Личные рекорды</div>
+      <div class="pr-item">
+        <div class="pr-ex">Жим штанги лёжа</div>
+        <div class="pr-weight">90 кг</div>
+        <div class="pr-badge">ПР</div>
+      </div>
+      <div class="pr-item">
+        <div class="pr-ex">Приседания со штангой</div>
+        <div class="pr-weight">120 кг</div>
+        <div class="pr-badge">ПР</div>
+      </div>
+      <div class="pr-item">
+        <div class="pr-ex">Становая тяга</div>
+        <div class="pr-weight">140 кг</div>
+        <div class="pr-badge">ПР</div>
+      </div>
+      <div class="pr-item">
+        <div class="pr-ex">Тяга верхнего блока</div>
+        <div class="pr-weight">75 кг</div>
+        <div class="pr-badge">ПР</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: ВЕСА -->
+  <div class="tab-content" id="tab-weights">
+    <div class="chart-card" style="margin-top:8px">
+      <div class="chart-header" style="margin-bottom:8px">
+        <div>
+          <div class="chart-title">Жим штанги лёжа</div>
+          <div style="font-size:12px;color:var(--hint);margin-top:2px">Последние 8 тренировок</div>
+        </div>
+        <select style="background:var(--bg3);color:var(--text);border:none;border-radius:8px;padding:6px 10px;font-size:13px">
+          <option>Жим лёжа</option>
+          <option>Приседания</option>
+          <option>Становая</option>
+        </select>
+      </div>
+      <div style="margin-bottom:10px">
+        <span class="chart-val">82.5 кг</span>
+        <span class="chart-delta">↑ +2.5кг</span>
+      </div>
+      <svg viewBox="0 0 358 130" width="100%" height="130">
+        <defs>
+          <linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#30d158" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="#30d158" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <line x1="0" y1="32" x2="358" y2="32" stroke="#3a3a3c" stroke-width="1"/>
+        <line x1="0" y1="64" x2="358" y2="64" stroke="#3a3a3c" stroke-width="1"/>
+        <line x1="0" y1="96" x2="358" y2="96" stroke="#3a3a3c" stroke-width="1"/>
+        <polygon points="20,96 71,96 122,80 173,80 224,64 275,64 326,48 357,32 357,120 20,120"
+          fill="url(#weightGrad)"/>
+        <polyline points="20,96 71,96 122,80 173,80 224,64 275,64 326,48 357,32"
+          fill="none" stroke="#30d158" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="20" cy="96" r="3.5" fill="#30d158"/>
+        <circle cx="71" cy="96" r="3.5" fill="#30d158"/>
+        <circle cx="122" cy="80" r="3.5" fill="#30d158"/>
+        <circle cx="173" cy="80" r="3.5" fill="#30d158"/>
+        <circle cx="224" cy="64" r="3.5" fill="#30d158"/>
+        <circle cx="275" cy="64" r="3.5" fill="#30d158"/>
+        <circle cx="326" cy="48" r="3.5" fill="#30d158"/>
+        <circle cx="357" cy="32" r="5" fill="#30d158" stroke="#1c1c1e" stroke-width="2"/>
+        <text x="14" y="120" fill="#8e8e93" font-size="9" text-anchor="middle">75кг</text>
+        <text x="65" y="120" fill="#8e8e93" font-size="9" text-anchor="middle">75кг</text>
+        <text x="116" y="120" fill="#8e8e93" font-size="9" text-anchor="middle">77.5</text>
+        <text x="167" y="120" fill="#8e8e93" font-size="9" text-anchor="middle">77.5</text>
+        <text x="218" y="120" fill="#8e8e93" font-size="9" text-anchor="middle">80кг</text>
+        <text x="269" y="120" fill="#8e8e93" font-size="9" text-anchor="middle">80кг</text>
+        <text x="320" y="120" fill="#8e8e93" font-size="9" text-anchor="middle">82.5</text>
+        <text x="353" y="120" fill="#30d158" font-size="9" text-anchor="middle" font-weight="700">82.5</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- TAB: ПИТАНИЕ -->
+  <div class="tab-content" id="tab-nutr">
+    <div class="chart-card" style="margin-top:8px">
+      <div class="chart-title" style="margin-bottom:4px">Среднее за неделю</div>
+      <div style="display:flex;gap:10px;margin-top:12px">
+        <div style="flex:1;text-align:center">
+          <div style="font-size:26px;font-weight:700;color:var(--text)">2 840</div>
+          <div style="font-size:12px;color:var(--hint);margin-top:3px">ккал / день</div>
+        </div>
+        <div style="flex:1;text-align:center">
+          <div style="font-size:26px;font-weight:700;color:var(--blue)">178г</div>
+          <div style="font-size:12px;color:var(--hint);margin-top:3px">белки / день</div>
+        </div>
+        <div style="flex:1;text-align:center">
+          <div style="font-size:26px;font-weight:700;color:var(--green)">97%</div>
+          <div style="font-size:12px;color:var(--hint);margin-top:3px">дней залогировано</div>
+        </div>
+      </div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card" style="flex:none;width:100%">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="font-size:14px;color:var(--text);font-weight:600">Выполнение целей за 7 дней</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div class="nm-row"><span class="nm-name" style="color:var(--text)">Ккал</span><div class="nm-bar-wrap" style="height:8px"><div class="nm-bar" style="width:92%;background:var(--blue)"></div></div><span class="nm-val" style="color:var(--text);font-weight:600">92%</span></div>
+          <div class="nm-row"><span class="nm-name" style="color:var(--text)">Белки</span><div class="nm-bar-wrap" style="height:8px"><div class="nm-bar" style="width:88%;background:var(--blue)"></div></div><span class="nm-val" style="color:var(--text);font-weight:600">88%</span></div>
+          <div class="nm-row"><span class="nm-name" style="color:var(--text)">Жиры</span><div class="nm-bar-wrap" style="height:8px"><div class="nm-bar" style="width:78%;background:var(--orange)"></div></div><span class="nm-val" style="color:var(--text);font-weight:600">78%</span></div>
+          <div class="nm-row"><span class="nm-name" style="color:var(--text)">Углев</span><div class="nm-bar-wrap" style="height:8px"><div class="nm-bar" style="width:95%;background:var(--green)"></div></div><span class="nm-val" style="color:var(--text);font-weight:600">95%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: ТЕЛО -->
+  <div class="tab-content" id="tab-body">
+    <div class="chart-card" style="margin-top:8px">
+      <div class="chart-title" style="margin-bottom:4px">Вес тела</div>
+      <div style="margin-bottom:10px"><span class="chart-val">82.0 кг</span><span style="font-size:13px;color:var(--hint);margin-left:8px">−1.5кг за месяц</span></div>
+      <svg viewBox="0 0 358 120" width="100%" height="120">
+        <defs><linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#bf5af2" stop-opacity="0.2"/><stop offset="100%" stop-color="#bf5af2" stop-opacity="0"/></linearGradient></defs>
+        <line x1="0" y1="30" x2="358" y2="30" stroke="#3a3a3c" stroke-width="1"/>
+        <line x1="0" y1="70" x2="358" y2="70" stroke="#3a3a3c" stroke-width="1"/>
+        <polygon points="20,40 71,45 122,50 173,55 224,58 275,60 326,65 357,72 357,110 20,110" fill="url(#bodyGrad)"/>
+        <polyline points="20,40 71,45 122,50 173,55 224,58 275,60 326,65 357,72" fill="none" stroke="#bf5af2" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="357" cy="72" r="5" fill="#bf5af2" stroke="#1c1c1e" stroke-width="2"/>
+        <text x="14" y="110" fill="#8e8e93" font-size="9" text-anchor="middle">83.5</text>
+        <text x="353" y="110" fill="#bf5af2" font-size="9" text-anchor="middle" font-weight="700">82.0</text>
+      </svg>
+    </div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════
+     SCREEN 5 — PROGRAM
+══════════════════════════════ -->
+<div class="screen" id="s-program">
+  <div class="page-header">
+    <h1>Программа</h1>
+  </div>
+
+  <div class="cycle-card">
+    <div class="cycle-top">
+      <div>
+        <div class="cycle-name">Объёмная неделя</div>
+        <div class="cycle-week">Неделя 2 из 3 · Цикл #4</div>
+      </div>
+      <div class="cycle-dots">
+        <div class="c-dot done"></div>
+        <div class="c-dot current"></div>
+        <div class="c-dot todo"></div>
+      </div>
+    </div>
+    <div class="cycle-progress"><div class="cycle-progress-fill" style="width:60%"></div></div>
+    <div class="cycle-hint">Разгрузочная неделя через 8 тренировок</div>
+  </div>
+
+  <div class="days-list">
+    <!-- Day 1 — done -->
+    <div class="day-item" onclick="toggleDay(this)">
+      <div class="day-header">
+        <div class="day-icon done">✅</div>
+        <div class="day-info">
+          <div class="day-name">Понедельник — Верх (Сила)</div>
+          <div class="day-meta">Выполнено · 3 июня · 9 430 кг тоннаж</div>
+        </div>
+        <div class="day-chevron">›</div>
+      </div>
+      <div class="day-exercises">
+        <div class="dex-item"><span class="dex-num">1</span><span class="dex-name">Жим штанги лёжа</span><span class="dex-sets">4×5 · 87.5кг</span></div>
+        <div class="dex-item"><span class="dex-num">2</span><span class="dex-name">Тяга штанги в наклоне</span><span class="dex-sets">4×5 · 80кг</span></div>
+        <div class="dex-item"><span class="dex-num">3</span><span class="dex-name">Жим штанги стоя</span><span class="dex-sets">3×5 · 52.5кг</span></div>
+        <div class="dex-item"><span class="dex-num">4</span><span class="dex-name">Подтягивания</span><span class="dex-sets">3×5 · +10кг</span></div>
+      </div>
+    </div>
+
+    <!-- Day 2 — done -->
+    <div class="day-item" onclick="toggleDay(this)">
+      <div class="day-header">
+        <div class="day-icon done">✅</div>
+        <div class="day-info">
+          <div class="day-name">Среда — Ноги</div>
+          <div class="day-meta">Выполнено · 5 июня · 12 200 кг тоннаж</div>
+        </div>
+        <div class="day-chevron">›</div>
+      </div>
+      <div class="day-exercises">
+        <div class="dex-item"><span class="dex-num">1</span><span class="dex-name">Приседания со штангой</span><span class="dex-sets">4×5 · 115кг</span></div>
+        <div class="dex-item"><span class="dex-num">2</span><span class="dex-name">Жим ногами</span><span class="dex-sets">4×8 · 180кг</span></div>
+        <div class="dex-item"><span class="dex-num">3</span><span class="dex-name">Румынская тяга</span><span class="dex-sets">3×8 · 80кг</span></div>
+        <div class="dex-item"><span class="dex-num">4</span><span class="dex-name">Икры стоя</span><span class="dex-sets">4×15 · 60кг</span></div>
+      </div>
+    </div>
+
+    <!-- Day 3 — current/today -->
+    <div class="day-item open" onclick="toggleDay(this)">
+      <div class="day-header">
+        <div class="day-icon current">▶️</div>
+        <div class="day-info">
+          <div class="day-name">Пятница — Верх (Объём)</div>
+          <div class="day-meta" style="color:var(--blue)">Сегодня · 8 июня</div>
+        </div>
+        <div class="day-chevron" style="transform:rotate(90deg)">›</div>
+      </div>
+      <div class="day-exercises" style="display:block">
+        <div class="dex-item"><span class="dex-num">1</span><span class="dex-name">Жим штанги лёжа</span><span class="dex-sets">4×8 · 80кг</span></div>
+        <div class="dex-item"><span class="dex-num">2</span><span class="dex-name">Тяга верхнего блока</span><span class="dex-sets">4×10 · 70кг</span></div>
+        <div class="dex-item"><span class="dex-num">3</span><span class="dex-name">Жим гантелей наклонный</span><span class="dex-sets">3×10 · 28кг</span></div>
+        <div class="dex-item"><span class="dex-num">4</span><span class="dex-name">Тяга гантели одной рукой</span><span class="dex-sets">3×10 · 36кг</span></div>
+        <div class="dex-item"><span class="dex-num">5</span><span class="dex-name">Разводки гантелей</span><span class="dex-sets">3×12 · 18кг</span></div>
+        <div class="dex-item"><span class="dex-num">6</span><span class="dex-name">Тяга к лицу</span><span class="dex-sets">3×15 · 30кг</span></div>
+        <div style="margin-top:12px">
+          <button class="btn btn-primary" onclick="showScreen('s-workout')">💪 Начать тренировку</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Day 4 — upcoming -->
+    <div class="day-item" onclick="toggleDay(this)">
+      <div class="day-header">
+        <div class="day-icon todo" style="font-size:14px;color:var(--hint)">🔒</div>
+        <div class="day-info">
+          <div class="day-name">Следующая — Верх (Сила)</div>
+          <div class="day-meta">Неделя 3 · Силовая</div>
+        </div>
+        <div class="day-chevron">›</div>
+      </div>
+      <div class="day-exercises">
+        <div class="dex-item"><span class="dex-num">1</span><span class="dex-name">Жим штанги лёжа</span><span class="dex-sets">4×3 · 90кг</span></div>
+        <div class="dex-item"><span class="dex-num">2</span><span class="dex-name">Тяга штанги в наклоне</span><span class="dex-sets">4×3 · 85кг</span></div>
+        <div class="dex-item"><span class="dex-num">3</span><span class="dex-name">Жим штанги стоя</span><span class="dex-sets">3×3 · 55кг</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="next-cycle">
+    <div class="nc-left">
+      <div class="nc-title">Следующий цикл</div>
+      <div class="nc-sub">Начнётся разгрузочная неделя</div>
+    </div>
+    <div class="nc-days">10 дн</div>
+  </div>
+</div>
+
+
+<!-- ══════════════════════════════
+     SCREEN 6 — PROFILE / SETTINGS
+══════════════════════════════ -->
+<div class="screen" id="s-profile">
+  <div class="page-header" style="padding-bottom:0">
+    <div class="back-btn" onclick="showScreen('s-home')">←</div>
+    <h1>Профиль</h1>
+  </div>
+
+  <div class="profile-hero">
+    <div class="profile-avatar-big">К<div class="edit-av">✎</div></div>
+    <div class="profile-name">Кирилл Толочков</div>
+    <div class="profile-since">В приложении с марта 2026</div>
+    <div class="profile-stats">
+      <div class="ps-item"><div class="ps-val">24</div><div class="ps-label">тренировки</div></div>
+      <div class="ps-item"><div class="ps-val" style="color:var(--green)">82 кг</div><div class="ps-label">вес тела</div></div>
+      <div class="ps-item"><div class="ps-val" style="color:var(--orange)">8.1</div><div class="ps-label">средний RPE</div></div>
+    </div>
+  </div>
+
+  <!-- Параметры тела -->
+  <div class="settings-group">
+    <div class="sg-title">Параметры тела</div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(10,132,255,.12)">⚖️</div><div class="sr-label">Вес</div><div class="sr-value">82 кг</div><div class="sr-chevron">›</div></div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(48,209,88,.12)">📏</div><div class="sr-label">Рост</div><div class="sr-value">180 см</div><div class="sr-chevron">›</div></div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(255,159,10,.12)">🎂</div><div class="sr-label">Возраст</div><div class="sr-value">34 года</div><div class="sr-chevron">›</div></div>
+  </div>
+
+  <!-- Цели КБЖУ -->
+  <div class="settings-group">
+    <div class="sg-title">Цели питания</div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(255,69,58,.12)">🔥</div><div class="sr-label">Калории</div><div class="sr-value">3 300 ккал</div><div class="sr-chevron">›</div></div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(10,132,255,.12)">🥩</div><div class="sr-label">Белки</div><div class="sr-value">200 г</div><div class="sr-chevron">›</div></div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(255,159,10,.12)">🫒</div><div class="sr-label">Жиры</div><div class="sr-value">85 г</div><div class="sr-chevron">›</div></div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(48,209,88,.12)">🌾</div><div class="sr-label">Углеводы</div><div class="sr-value">350 г</div><div class="sr-chevron">›</div></div>
+  </div>
+
+  <!-- Программа -->
+  <div class="settings-group">
+    <div class="sg-title">Программа тренировок</div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(191,90,242,.12)">🎯</div><div class="sr-label">Цель</div><div class="sr-value">Набор массы</div><div class="sr-chevron">›</div></div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(48,209,88,.12)">🏋️</div><div class="sr-label">Оборудование</div><div class="sr-value">Зал</div><div class="sr-chevron">›</div></div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(10,132,255,.12)">📅</div><div class="sr-label">Тренировок в неделю</div><div class="sr-value">3 дня</div><div class="sr-chevron">›</div></div>
+    <div class="sr" style="padding:13px 16px">
+      <div class="sr-icon" style="background:rgba(255,159,10,.12)">🔄</div>
+      <div class="sr-label">Пересоздать программу</div>
+      <div class="sr-chevron">›</div>
+    </div>
+  </div>
+
+  <!-- Вода -->
+  <div class="settings-group">
+    <div class="sg-title">Вода</div>
+    <div class="sr" style="flex-direction:column;align-items:flex-start;gap:10px;padding:14px 16px">
+      <div style="display:flex;align-items:center;width:100%">
+        <div class="sr-icon" style="background:rgba(10,132,255,.12)">💧</div>
+        <div class="sr-label">Напоминать о воде</div>
+        <div class="toggle on" id="water-toggle" onclick="this.classList.toggle('on');toggleWaterSettings()"></div>
+      </div>
+      <div id="water-settings" style="width:100%;display:flex;flex-direction:column;gap:10px;padding-left:44px">
+        <div>
+          <div style="font-size:12px;color:var(--hint);margin-bottom:6px">Цель в день</div>
+          <div style="display:flex;gap:6px">
+            <div class="wset-chip" onclick="selectWaterGoal(this,6)">6 ст.</div>
+            <div class="wset-chip active" onclick="selectWaterGoal(this,8)">8 ст.</div>
+            <div class="wset-chip" onclick="selectWaterGoal(this,10)">10 ст.</div>
+            <div class="wset-chip" onclick="selectWaterGoal(this,12)">12 ст.</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--hint);margin-bottom:6px">Напоминать каждые</div>
+          <div style="display:flex;gap:6px">
+            <div class="wset-chip" onclick="selectWaterInterval(this,1)">1 ч</div>
+            <div class="wset-chip active" onclick="selectWaterInterval(this,2)">2 ч</div>
+            <div class="wset-chip" onclick="selectWaterInterval(this,3)">3 ч</div>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--hint);line-height:1.5">
+          Бот отправит тихое уведомление в Telegram.<br>Не беспокоит ночью (с 22:00 до 8:00).
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Уведомления -->
+  <div class="settings-group">
+    <div class="sg-title">Уведомления</div>
+    <div class="sr">
+      <div class="sr-icon" style="background:rgba(255,159,10,.12)">🌅</div>
+      <div class="sr-label">Напоминание о завтраке</div>
+      <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+    </div>
+    <div class="sr">
+      <div class="sr-icon" style="background:rgba(10,132,255,.12)">💪</div>
+      <div class="sr-label">Напоминание о тренировке</div>
+      <div class="toggle on" onclick="this.classList.toggle('on')"></div>
+    </div>
+    <div class="sr">
+      <div class="sr-icon" style="background:rgba(48,209,88,.12)">🌙</div>
+      <div class="sr-label">Вечерний итог дня</div>
+      <div class="toggle" onclick="this.classList.toggle('on')"></div>
+    </div>
+  </div>
+
+  <!-- Прочее -->
+  <div class="settings-group">
+    <div class="sg-title">Прочее</div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(10,132,255,.12)">📤</div><div class="sr-label">Экспорт данных</div><div class="sr-chevron">›</div></div>
+    <div class="sr"><div class="sr-icon" style="background:rgba(48,209,88,.12)">🔗</div><div class="sr-label">Открыть бота в Telegram</div><div class="sr-chevron">›</div></div>
+    <div class="sr sr-danger"><div class="sr-icon" style="background:rgba(255,69,58,.1)">🗑</div><div class="sr-label">Удалить аккаунт</div><div class="sr-chevron" style="color:var(--red)">›</div></div>
+  </div>
+
+  <div style="height:16px"></div>
+</div>
+
+
+<!-- ══════════════════════════════
+     SCREEN 7 — ADD FOOD
+══════════════════════════════ -->
+<div class="screen" id="s-add-food" style="padding-bottom:calc(var(--nav-h) + 130px)">
+
+  <!-- ── STEP 1: ГОЛОС / НЕДАВНЕЕ ── -->
+  <div class="step active" id="food-step-1">
+
+    <!-- Header with auto-detected meal -->
+    <div class="af-header">
+      <div class="back-btn" onclick="showScreen('s-nutrition')">←</div>
+      <div class="af-title">Добавить приём</div>
+      <div class="af-meal-pill" onclick="cycleMeal()">
+        <div class="af-meal-dot" id="af-meal-dot"></div>
+        <span id="af-meal-name">Обед</span>
+        <span style="color:var(--hint);font-size:11px;margin-left:2px" id="af-meal-time">14:30</span>
+      </div>
+    </div>
+
+    <!-- Today progress -->
+    <div class="af-progress">
+      <div class="afp-bar-wrap"><div class="afp-bar" style="width:65%"></div></div>
+      <div class="afp-labels">
+        <span>2140 ккал сегодня</span>
+        <span>цель 3300 ккал</span>
+      </div>
+    </div>
+
+    <!-- Repeat yesterday -->
+    <div class="af-repeat" onclick="repeatYesterday()">
+      <span style="font-size:22px">🔁</span>
+      <div class="af-repeat-text">
+        <div class="af-repeat-title">Такой же обед как вчера</div>
+        <div class="af-repeat-sub">Гречка + куриная грудка · 449 ккал</div>
+      </div>
+      <span style="color:var(--hint);font-size:18px">›</span>
+    </div>
+
+    <!-- Recent foods -->
+    <div class="af-section-label">Недавние продукты</div>
+    <div class="recent-scroll">
+      <div class="recent-card" onclick="quickAdd('oatmeal')">
+        <div class="rc-emoji">🥣</div>
+        <div class="rc-name">Овсянка</div>
+        <div class="rc-meta">200 г</div>
+        <div class="rc-kcal">250 ккал</div>
+      </div>
+      <div class="recent-card" onclick="quickAdd('chicken')">
+        <div class="rc-emoji">🍗</div>
+        <div class="rc-name">Куриная грудка</div>
+        <div class="rc-meta">150 г</div>
+        <div class="rc-kcal">170 ккал</div>
+      </div>
+      <div class="recent-card" onclick="quickAdd('eggs')">
+        <div class="rc-emoji">🥚</div>
+        <div class="rc-name">Яйца</div>
+        <div class="rc-meta">2 шт</div>
+        <div class="rc-kcal">156 ккал</div>
+      </div>
+      <div class="recent-card" onclick="quickAdd('protein')">
+        <div class="rc-emoji">🫙</div>
+        <div class="rc-name">Протеин</div>
+        <div class="rc-meta">1 мерная</div>
+        <div class="rc-kcal">120 ккал</div>
+      </div>
+      <div class="recent-card" onclick="quickAdd('cottage')">
+        <div class="rc-emoji">🥛</div>
+        <div class="rc-name">Творог</div>
+        <div class="rc-meta">200 г</div>
+        <div class="rc-kcal">284 ккал</div>
+      </div>
+      <div class="recent-card" onclick="quickAdd('rice')">
+        <div class="rc-emoji">🍚</div>
+        <div class="rc-name">Рис</div>
+        <div class="rc-meta">200 г</div>
+        <div class="rc-kcal">260 ккал</div>
+      </div>
+    </div>
+
+    <!-- Voice (primary CTA) -->
+    <div class="voice-section">
+      <button class="voice-fab" id="voice-fab" onclick="toggleVoice()">🎤</button>
+      <div class="voice-fab-label">Надиктовать голосом</div>
+      <div class="voice-fab-sub">Скажите что съели — AI определит КБЖУ</div>
+      <div class="voice-text-link" onclick="showFoodStep('1b')">✏️ Написать текстом</div>
+    </div>
+
+  </div>
+
+  <!-- ── STEP 1b: ТЕКСТ ── -->
+  <div class="step" id="food-step-1b">
+    <div class="af-header">
+      <div class="back-btn" onclick="showFoodStep(1)">←</div>
+      <div class="af-title">Описать текстом</div>
+      <div style="width:80px"></div>
+    </div>
+    <textarea class="food-textarea" id="food-input"
+      placeholder="Что съели? Пишите как угодно:
+
+«гречка с курицей, 300г»
+«2 яйца и тост с маслом»
+«обед в кафе — борщ и котлета»"></textarea>
+    <div style="padding:0 12px">
+      <button class="btn btn-primary" onclick="analyzeFood()">Проанализировать →</button>
+    </div>
+  </div>
+
+  <!-- ── STEP 2: AI LOADING ── -->
+  <div class="step" id="food-step-2">
+    <div class="ai-loading">
+      <div class="ai-spinner"><span style="font-size:30px">🤖</span></div>
+      <div class="ai-loading-text">Анализирую состав...</div>
+      <div class="ai-loading-sub">Claude определяет КБЖУ<br>по вашему описанию</div>
+      <div class="ai-dots">
+        <div class="ai-dot"></div>
+        <div class="ai-dot"></div>
+        <div class="ai-dot"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 3: РЕЗУЛЬТАТ + ПОРЦИИ ── -->
+  <div class="step" id="food-step-3">
+    <div class="af-header">
+      <div class="back-btn" onclick="showFoodStep(1)">←</div>
+      <div class="af-title">Проверить</div>
+      <div class="ai-badge" style="margin:0">🤖 Claude AI</div>
+    </div>
+
+    <!-- Items with portion chips -->
+    <div class="parsed-items">
+
+      <div class="parsed-item-v2">
+        <div class="pi-row">
+          <span style="font-size:20px">🌾</span>
+          <div style="flex:1">
+            <div class="pi-name">Гречневая крупа варёная</div>
+            <div class="pi-weight" style="font-size:11px;color:var(--hint)">132 ккал / 100г</div>
+          </div>
+          <div class="pi-kcal-live" id="kcal-0">264 ккал</div>
+          <div class="pi-remove" onclick="this.closest('.parsed-item-v2').remove();updateFoodTotals()">✕</div>
+        </div>
+        <div class="portion-chips">
+          <div class="pc" onclick="setPortion(0,100,132)">100г</div>
+          <div class="pc active" onclick="setPortion(0,200,132)">200г</div>
+          <div class="pc" onclick="setPortion(0,300,132)">300г</div>
+          <div class="pc" onclick="setPortion(0,400,132)">400г</div>
+        </div>
+      </div>
+
+      <div class="parsed-item-v2">
+        <div class="pi-row">
+          <span style="font-size:20px">🍗</span>
+          <div style="flex:1">
+            <div class="pi-name">Куриная грудка отварная</div>
+            <div class="pi-weight" style="font-size:11px;color:var(--hint)">113 ккал / 100г</div>
+          </div>
+          <div class="pi-kcal-live" id="kcal-1">170 ккал</div>
+          <div class="pi-remove" onclick="this.closest('.parsed-item-v2').remove();updateFoodTotals()">✕</div>
+        </div>
+        <div class="portion-chips">
+          <div class="pc" onclick="setPortion(1,100,113)">100г</div>
+          <div class="pc active" onclick="setPortion(1,150,113)">150г</div>
+          <div class="pc" onclick="setPortion(1,200,113)">200г</div>
+          <div class="pc" onclick="setPortion(1,300,113)">300г</div>
+        </div>
+      </div>
+
+      <div class="parsed-item-v2">
+        <div class="pi-row">
+          <span style="font-size:20px">🥒</span>
+          <div style="flex:1">
+            <div class="pi-name">Огурец свежий</div>
+            <div class="pi-weight" style="font-size:11px;color:var(--hint)">15 ккал / 100г</div>
+          </div>
+          <div class="pi-kcal-live" id="kcal-2">15 ккал</div>
+          <div class="pi-remove" onclick="this.closest('.parsed-item-v2').remove();updateFoodTotals()">✕</div>
+        </div>
+        <div class="portion-chips">
+          <div class="pc" onclick="setPortion(2,50,15)">50г</div>
+          <div class="pc active" onclick="setPortion(2,100,15)">100г</div>
+          <div class="pc" onclick="setPortion(2,150,15)">150г</div>
+          <div class="pc" onclick="setPortion(2,200,15)">200г</div>
+        </div>
+      </div>
+
+      <div class="parsed-item-v2" style="cursor:pointer" onclick="showToast('Добавьте описание голосом или текстом')">
+        <div class="pi-row">
+          <span style="font-size:20px;color:var(--blue)">＋</span>
+          <div class="pi-name" style="color:var(--blue)">Добавить ещё продукт</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="height:8px"></div>
+  </div>
+
+</div>
+
+<!-- Food save dock (step 3 only) -->
+<div class="food-save-dock" id="food-save-dock" style="display:none">
+  <div class="fsd-row">
+    <div class="fsd-kcal" id="fsd-kcal">449 ккал</div>
+    <div class="fsd-macros" id="fsd-macros">Б 52г · Ж 5г · У 58г</div>
+    <div class="fsd-delta">+449 к норме</div>
+  </div>
+  <button class="btn btn-green" onclick="saveFood()">✓ Сохранить приём пищи</button>
+</div>
+
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- ══════════════════════════════
+     BOTTOM NAVIGATION
+══════════════════════════════ -->
+<nav class="bottom-nav">
+  <div class="nav-item active" id="nav-home" onclick="showScreen('s-home')">
+    <svg class="nav-icon" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg>
+    <span class="nav-label">Главная</span>
+  </div>
+  <div class="nav-item" id="nav-workout" onclick="showScreen('s-workout')">
+    <svg class="nav-icon" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11"/><path d="M21 3L3 21"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="5" r="2"/></svg>
+    <span class="nav-label">Тренировка</span>
+  </div>
+  <div class="nav-item" id="nav-nutrition" onclick="showScreen('s-nutrition')">
+    <svg class="nav-icon" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20A10 10 0 0012 2z"/><path d="M12 6v6l4 2"/></svg>
+    <span class="nav-label">Питание</span>
+  </div>
+  <div class="nav-item" id="nav-progress" onclick="showScreen('s-progress')">
+    <svg class="nav-icon" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/></svg>
+    <span class="nav-label">Прогресс</span>
+  </div>
+  <div class="nav-item" id="nav-program" onclick="showScreen('s-program')">
+    <svg class="nav-icon" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    <span class="nav-label">Программа</span>
+  </div>
+</nav>
+
+</div><!-- /phone -->
+
+<script>
+// ── State ──
+const workoutState = { weight: 82.5, reps: 8, rpe: 8, sets: [], curSet: 1, totalSets: 4 };
+let workoutTimer = null, workoutSeconds = 0;
+let restTimer = null, restSeconds = 0;
+
+// ── Navigation ──
+const screenMap = {
+  's-home': 'nav-home',
+  's-workout': 'nav-workout',
+  's-nutrition': 'nav-nutrition',
+  's-progress': 'nav-progress',
+  's-program': 'nav-program',
+};
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const navId = screenMap[id];
+  if (navId) document.getElementById(navId).classList.add('active');
+
+  // workout dock
+  const wDock = document.getElementById('input-dock');
+  if (id === 's-workout') {
+    wDock.style.display = 'block';
+    if (!workoutTimer) startWorkoutTimer();
+    initInlineTechnique('bench');
+  } else {
+    wDock.style.display = 'none';
+  }
+
+  // food dock — hide when leaving add-food
+  if (id !== 's-add-food') {
+    document.getElementById('food-save-dock').style.display = 'none';
+  }
+
+  // init add-food when entering
+  if (id === 's-add-food') {
+    initAddFood();
+    showFoodStep(1);
+  }
+}
+
+// ── Workout Timer ──
+function startWorkoutTimer() {
+  workoutTimer = setInterval(() => {
+    workoutSeconds++;
+    const m = String(Math.floor(workoutSeconds / 60)).padStart(2,'0');
+    const s = String(workoutSeconds % 60).padStart(2,'0');
+    document.getElementById('wt-timer').textContent = m + ':' + s;
+  }, 1000);
+}
+
+// ── Weight / Reps Steppers ──
+function changeWeight(delta) {
+  workoutState.weight = Math.max(2.5, Math.round((workoutState.weight + delta) * 10) / 10);
+  document.getElementById('weight-val').textContent = workoutState.weight;
+  flash('weight-stepper');
+}
+function changeReps(delta) {
+  workoutState.reps = Math.max(1, workoutState.reps + delta);
+  document.getElementById('reps-val').textContent = workoutState.reps;
+  flash('reps-stepper');
+}
+
+// ── RPE ──
+function selectRPE(el, val) {
+  document.querySelectorAll('.rpe-pill').forEach(p => p.classList.remove('selected'));
+  el.classList.add('selected');
+  workoutState.rpe = val;
+}
+
+// ── Record Set ──
+function recordSet() {
+  const { weight, reps, rpe, curSet, totalSets } = workoutState;
+  const tbody = document.getElementById('sets-body');
+  const tr = document.createElement('tr');
+  tr.className = 'done-row';
+  tr.innerHTML = `<td><span class="check">✓</span> ${curSet}</td><td>${weight}</td><td>${reps}</td><td>${rpe}</td>`;
+  tbody.appendChild(tr);
+
+  workoutState.sets.push({ weight, reps, rpe });
+
+  if (curSet < totalSets) {
+    workoutState.curSet++;
+    document.getElementById('set-label').textContent = `Подход ${workoutState.curSet} из ${totalSets}`;
+  } else {
+    document.getElementById('set-label').textContent = '✅ Все подходы выполнены';
+    document.getElementById('weight-stepper').style.opacity = '0.4';
+    document.getElementById('reps-stepper').style.opacity = '0.4';
+  }
+
+  startRestTimer();
+  flash('weight-stepper');
+}
+
+// ── Rest Timer ──
+function startRestTimer() {
+  restSeconds = 120;
+  const bar = document.getElementById('rest-bar');
+  bar.style.opacity = '1';
+  updateRestDisplay();
+  if (restTimer) clearInterval(restTimer);
+  restTimer = setInterval(() => {
+    restSeconds--;
+    updateRestDisplay();
+    if (restSeconds <= 0) { clearInterval(restTimer); bar.style.opacity = '0.4'; }
+  }, 1000);
+}
+function updateRestDisplay() {
+  const m = Math.floor(restSeconds / 60);
+  const s = String(restSeconds % 60).padStart(2,'0');
+  document.getElementById('rest-val').textContent = m + ':' + s;
+}
+function skipRest() {
+  if (restTimer) clearInterval(restTimer);
+  document.getElementById('rest-bar').style.opacity = '0.4';
+  restSeconds = 0;
+  updateRestDisplay();
+}
+
+// ── Progress Tabs ──
+function showProgTab(el, tabId) {
+  document.querySelectorAll('.prog-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById(tabId).classList.add('active');
+}
+
+// ── Day expand/collapse ──
+function toggleDay(el) {
+  const exEl = el.querySelector('.day-exercises');
+  const ch = el.querySelector('.day-chevron');
+  const isOpen = exEl.style.display === 'block';
+  exEl.style.display = isOpen ? 'none' : 'block';
+  ch.style.transform = isOpen ? '' : 'rotate(90deg)';
+}
+
+// ── Flash feedback ──
+function flash(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.background = 'rgba(10,132,255,0.15)';
+  setTimeout(() => { el.style.background = ''; }, 120);
+}
+
+// ── Exercise Technique Modal ──
+const EXERCISES = {
+  bench: {
+    name: 'Жим штанги лёжа',
+    gif: 'https://media.musclewiki.com/media/uploads/videos/branded/male-Barbell-bench-press-front.gif',
+    primary: ['Грудь', 'Передние дельты'],
+    secondary: ['Трицепс'],
+    tips: [
+      'Лягте на скамью, сведите лопатки — спина слегка прогнута',
+      'Хват чуть шире плеч, запястья над локтями',
+      'Опускайте штангу к нижней части груди, локти под 45°',
+      'Жмите вверх и чуть назад — к стартовой точке',
+      'Не отрывайте ягодицы от скамьи'
+    ]
+  },
+  squat: {
+    name: 'Приседания со штангой',
+    gif: 'https://media.musclewiki.com/media/uploads/videos/branded/male-Barbell-squat-side.gif',
+    primary: ['Квадрицепс', 'Ягодицы'],
+    secondary: ['Бицепс бедра', 'Кора'],
+    tips: [
+      'Штанга на трапеции, стопы чуть шире плеч',
+      'Носки развёрнуты на 15–30°',
+      'Приседайте до параллели, колени по линии носков',
+      'Спина прямая, грудь вперёд на протяжении всего движения',
+      'Вставайте через пятки — не переносите вес на носки'
+    ]
+  },
+  deadlift: {
+    name: 'Становая тяга',
+    gif: 'https://media.musclewiki.com/media/uploads/videos/branded/male-Barbell-deadlift-side.gif',
+    primary: ['Бицепс бедра', 'Ягодицы', 'Спина'],
+    secondary: ['Трапеция', 'Предплечья'],
+    tips: [
+      'Стопы под бёдрами, гриф над шнурками',
+      'Хват чуть шире бёдер, руки прямые',
+      'Напрягите кор, плечи над грифом или чуть впереди',
+      'Тяните гриф вдоль ног — не отводите от тела',
+      'Локаут вверху — ягодицы в напряжении, не гиперэкстензия'
+    ]
+  },
+  pulldown: {
+    name: 'Тяга верхнего блока',
+    gif: 'https://media.musclewiki.com/media/uploads/videos/branded/male-Cable-lat-pulldown-front.gif',
+    primary: ['Широчайшие', 'Бицепс'],
+    secondary: ['Задние дельты', 'Ромбовидные'],
+    tips: [
+      'Хват чуть шире плеч, пронированный (ладони от себя)',
+      'Отклонитесь чуть назад, грудь вперёд',
+      'Тяните к верхней части груди, ведите локти вниз и назад',
+      'Сожмите широчайшие в нижней точке — секундная пауза',
+      'Возвращайте контролируемо, полное растяжение вверху'
+    ]
+  }
+};
+
+function initInlineTechnique(exKey) {
+  const ex = EXERCISES[exKey] || EXERCISES.bench;
+
+  // muscles
+  document.getElementById('il-muscles').innerHTML =
+    ex.primary.map(m => `<span class="muscle-tag muscle-primary">${m}</span>`).join('') +
+    ex.secondary.map(m => `<span class="muscle-tag muscle-secondary">${m}</span>`).join('');
+
+  // tips
+  document.getElementById('il-tips').innerHTML =
+    ex.tips.map((t, i) =>
+      `<div class="tech-il-tip"><div class="tech-il-num">${i+1}</div><div class="tech-il-text">${t}</div></div>`
+    ).join('');
+
+  // gif
+  const img = document.getElementById('il-gif-img');
+  img.style.display = 'none';
+  document.getElementById('il-shimmer').style.display = 'flex';
+  img.src = ex.gif;
+}
+
+function ilGifLoaded() {
+  document.getElementById('il-shimmer').style.display = 'none';
+  document.getElementById('il-gif-img').style.display = 'block';
+}
+
+function ilGifError() {
+  document.getElementById('il-shimmer').innerHTML =
+    '<div style="font-size:36px">🏋️</div><div style="font-size:12px;color:var(--hint);margin-top:6px">GIF загружается из ExerciseDB</div>';
+}
+
+// ── Add Food Flow ──
+// ── Add Food ──
+const MEALS = [
+  { name: 'Завтрак', dot: '#ff9f0a', hours: [6,10] },
+  { name: 'Обед',    dot: '#0a84ff', hours: [11,14] },
+  { name: 'Перекус', dot: '#30d158', hours: [15,17] },
+  { name: 'Ужин',    dot: '#bf5af2', hours: [18,23] },
+];
+let currentMealIdx = 1;
+
+function initAddFood() {
+  const h = new Date().getHours();
+  currentMealIdx = MEALS.findIndex(m => h >= m.hours[0] && h <= m.hours[1]);
+  if (currentMealIdx < 0) currentMealIdx = 1;
+  renderMealPill();
+}
+
+function renderMealPill() {
+  const m = MEALS[currentMealIdx];
+  document.getElementById('af-meal-name').textContent = m.name;
+  document.getElementById('af-meal-dot').style.background = m.dot;
+  const now = new Date();
+  document.getElementById('af-meal-time').textContent =
+    String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+}
+
+function cycleMeal() {
+  currentMealIdx = (currentMealIdx + 1) % MEALS.length;
+  renderMealPill();
+  showToast(MEALS[currentMealIdx].name + ' выбран');
+}
+
+function showFoodStep(n) {
+  document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+  document.getElementById('food-step-' + n).classList.add('active');
+  document.getElementById('s-add-food').scrollTop = 0;
+  const dock = document.getElementById('food-save-dock');
+  dock.style.display = (n == 3) ? 'block' : 'none';
+  // auto-focus textarea on text step
+  if (n === '1b') {
+    setTimeout(() => {
+      const ta = document.getElementById('food-input');
+      if (ta) ta.focus();
+    }, 50);
+  }
+}
+
+// Voice toggle (simulated)
+let voiceActive = false;
+function toggleVoice() {
+  const fab = document.getElementById('voice-fab');
+  if (!voiceActive) {
+    voiceActive = true;
+    fab.classList.add('recording');
+    fab.textContent = '⏹';
+    showToast('🎤 Запись...');
+    setTimeout(() => {
+      voiceActive = false;
+      fab.classList.remove('recording');
+      fab.textContent = '🎤';
+      showToast('✓ Распознано!');
+      setTimeout(() => {
+        showFoodStep(2);
+        setTimeout(() => showFoodStep(3), 2000);
+      }, 500);
+    }, 2500);
+  } else {
+    voiceActive = false;
+    fab.classList.remove('recording');
+    fab.textContent = '🎤';
+  }
+}
+
+function repeatYesterday() {
+  showFoodStep(2);
+  setTimeout(() => showFoodStep(3), 1800);
+}
+
+function quickAdd(key) {
+  showFoodStep(2);
+  setTimeout(() => showFoodStep(3), 1800);
+}
+
+function analyzeFood() {
+  const ta = document.getElementById('food-input');
+  if (!ta.value.trim()) {
+    ta.focus(); ta.style.borderColor = 'var(--red)';
+    setTimeout(() => ta.style.borderColor = '', 1000); return;
+  }
+  showFoodStep(2);
+  setTimeout(() => showFoodStep(3), 2200);
+}
+
+// Portion chips
+const portionKcals = [0, 0, 0]; // live kcal per item
+function setPortion(itemIdx, grams, kcalPer100) {
+  const kcal = Math.round(grams * kcalPer100 / 100);
+  portionKcals[itemIdx] = kcal;
+  const el = document.getElementById('kcal-' + itemIdx);
+  if (el) el.textContent = kcal + ' ккал';
+  // deselect siblings, select clicked
+  const chip = event.target;
+  chip.closest('.portion-chips').querySelectorAll('.pc').forEach(c => c.classList.remove('active'));
+  chip.classList.add('active');
+  updateFoodTotals();
+}
+
+function updateFoodTotals() {
+  const items = document.querySelectorAll('#food-step-3 .parsed-item-v2');
+  let total = 0;
+  items.forEach((item, i) => {
+    const liveEl = item.querySelector('.pi-kcal-live');
+    if (liveEl) total += parseInt(liveEl.textContent) || 0;
+  });
+  document.getElementById('fsd-kcal').textContent = total + ' ккал';
+}
+
+function saveFood() {
+  showToast('✅ Приём пищи записан!');
+  document.getElementById('food-save-dock').style.display = 'none';
+  setTimeout(() => showScreen('s-nutrition'), 800);
+}
+
+// ── Water ──
+let waterCount = 5, waterGoal = 8;
+
+function addWater() {
+  if (waterCount >= waterGoal) { showToast('Цель достигнута! 💧'); return; }
+  waterCount++;
+  renderWater();
+  if (waterCount === waterGoal) showToast('Отлично! Норма выполнена 💧');
+}
+
+function renderWater() {
+  const glasses = document.getElementById('water-glasses');
+  if (!glasses) return;
+  glasses.innerHTML = Array.from({length: waterGoal}, (_, i) =>
+    `<div class="wg${i < waterCount ? ' wg-full' : ''}"></div>`
+  ).join('');
+  const sub = document.getElementById('water-sub');
+  if (sub) sub.textContent = waterCount + ' из ' + waterGoal + ' стаканов';
+}
+
+function toggleWaterSettings() {
+  const s = document.getElementById('water-settings');
+  const on = document.getElementById('water-toggle').classList.contains('on');
+  s.style.display = on ? 'flex' : 'none';
+}
+
+function selectWaterGoal(el, val) {
+  el.closest('div').querySelectorAll('.wset-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  waterGoal = val;
+  if (waterCount > waterGoal) waterCount = waterGoal;
+  renderWater();
+  showToast('Цель: ' + val + ' стаканов в день');
+}
+
+function selectWaterInterval(el, val) {
+  el.closest('div').querySelectorAll('.wset-chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  showToast('Напоминание каждые ' + val + ' ч');
+}
+
+// ── Toast ──
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+// ── PWA Install ──
+let deferredPrompt = null;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  if (!localStorage.getItem('pwa-dismissed')) {
+    setTimeout(() => document.getElementById('pwa-banner').classList.remove('hidden'), 1500);
+  }
+});
+
+// iOS Safari — показываем инструкцию
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+const isInStandalone = window.navigator.standalone;
+if (isIOS && !isInStandalone && !localStorage.getItem('pwa-dismissed')) {
+  setTimeout(() => {
+    const banner = document.getElementById('pwa-banner');
+    banner.querySelector('.pwa-sub').textContent = 'Нажми Поделиться → «На экран Домой»';
+    banner.querySelector('.pwa-btn').textContent = 'Понятно';
+    banner.querySelector('.pwa-btn').onclick = dismissPWA;
+    banner.classList.remove('hidden');
+  }, 1500);
+}
+
+document.getElementById('pwa-install-btn').addEventListener('click', async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    if (outcome === 'accepted') dismissPWA();
+  }
+});
+
+function dismissPWA() {
+  document.getElementById('pwa-banner').classList.add('hidden');
+  localStorage.setItem('pwa-dismissed', '1');
+}
+
+window.addEventListener('appinstalled', () => dismissPWA());
+</script>
+</body>
+</html>
