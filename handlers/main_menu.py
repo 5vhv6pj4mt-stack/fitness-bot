@@ -4,8 +4,9 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 
-from database.db import get_user, create_user, get_day_nutrition, get_last_workouts
+from database.db import get_user, create_user, update_user, get_day_nutrition, get_last_workouts, reset_user_cycle, delete_user_program, save_user_program
 from keyboards.keyboards import main_menu
+from services.ai_service import generate_program
 
 
 router = Router()
@@ -125,3 +126,45 @@ async def cmd_settings(message: Message):
     await settings_menu(message)
 
 
+@router.message(Command("reset"))
+async def cmd_reset(message: Message):
+    user_id = message.from_user.id
+
+    try:
+        user = await get_user(user_id)
+
+        if not user or user.get("onboarded") != 1:
+            await message.answer("Сначала пройди онбординг — используй /start")
+            return
+
+        await message.answer("⏳ Перегенерирую программу, подожди...")
+
+        # Сначала генерируем — если упадёт, старая программа останется
+        program, nutrition = await generate_program(user)
+
+        await reset_user_cycle(user_id)
+        await delete_user_program(user_id)
+        await save_user_program(user_id, program)
+        if nutrition:
+            await update_user(user_id,
+                              goal_calories=nutrition.get("calories"),
+                              goal_protein=nutrition.get("protein"),
+                              goal_carbs=nutrition.get("carbs"),
+                              goal_fat=nutrition.get("fat"))
+
+        user_updated = await get_user(user_id)
+        kb = main_menu(
+            day_label=None,
+            week_label=WEEK_LABELS.get(
+                user_updated.get("current_week_type", "strength") if user_updated else "strength",
+                "Силовая"
+            )
+        )
+
+        await message.answer(
+            "✅ Программа пересоздана! Цикл начат заново с недели 1.",
+            reply_markup=kb
+        )
+
+    except Exception as e:
+        await message.answer(f"❌ Произошла ошибка при сбросе цикла: {e}")

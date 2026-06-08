@@ -1,15 +1,17 @@
 import json
 import aiohttp
-from groq import AsyncGroq, Groq
-from config import GROQ_API_KEY
+from groq import Groq
+from anthropic import AsyncAnthropic
+from config import GROQ_API_KEY, ANTHROPIC_API_KEY
 
-client = AsyncGroq(api_key=GROQ_API_KEY)
-_sync_client = Groq(api_key=GROQ_API_KEY)
+# Groq только для транскрипции голоса (Whisper)
+_groq_sync = Groq(api_key=GROQ_API_KEY)
 
-MODEL = "llama-3.3-70b-versatile"
-VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+# Claude для всего остального
+_claude = AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+MODEL = "claude-sonnet-4-6"
 
-# ── Экспертные системные промты ───────────────────────────────────────────────
+# ── Системные промты ───────────────────────────────────────────────────────────
 
 _COACH_SYSTEM = """Ты элитный тренер по силовым видам спорта с 20-летним опытом работы с профессиональными атлетами. Твоя методология основана на научных исследованиях и практике лучших специалистов мира:
 
@@ -60,27 +62,12 @@ _PROGRAM_SYSTEM = _COACH_SYSTEM + "\n\n" + _NUTRITION_SYSTEM + """
 - Для силы: линейная прогрессия + RPE 7-9, низкие повторения, высокие веса
 - Для новичков: отрабатывай паттерны движения, не гонись за весами первые 3 месяца
 - Отдых между подходами: для силы 3-5 мин, для объёма 1.5-3 мин
-- Деload каждые 3-4 недели: снижение объёма на 40-50%, сохранение интенсивности"""
+- Deload каждые 3-4 недели: снижение объёма на 40-50%, сохранение интенсивности"""
 
 
-# ── Функции ───────────────────────────────────────────────────────────────────
-
-async def transcribe_voice(audio_bytes: bytes, filename: str = "voice.ogg") -> str:
-    import asyncio
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(
-        None,
-        lambda: _sync_client.audio.transcriptions.create(
-            file=(filename, audio_bytes),
-            model="whisper-large-v3-turbo",
-            language="ru",
-        )
-    )
-    return result.text
-
+# ── Вспомогательные функции ───────────────────────────────────────────────────
 
 def _fix_json_strings(s: str) -> str:
-    """Escape literal control chars inside JSON string values."""
     result = []
     in_string = False
     escaped = False
@@ -116,6 +103,32 @@ def _extract_json(content: str) -> dict:
     return data
 
 
+async def _ask(system: str, user: str, max_tokens: int = 1024, temperature: float = 0.3) -> str:
+    response = await _claude.messages.create(
+        model=MODEL,
+        max_tokens=max_tokens,
+        system=system,
+        messages=[{"role": "user", "content": user}],
+    )
+    return response.content[0].text
+
+
+# ── Публичные функции ─────────────────────────────────────────────────────────
+
+async def transcribe_voice(audio_bytes: bytes, filename: str = "voice.ogg") -> str:
+    import asyncio
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None,
+        lambda: _groq_sync.audio.transcriptions.create(
+            file=(filename, audio_bytes),
+            model="whisper-large-v3-turbo",
+            language="ru",
+        )
+    )
+    return result.text
+
+
 _PARSE_FOOD_PROMPT = """\
 Определи суммарное КБЖУ для всей еды: "{text}"
 
@@ -130,7 +143,6 @@ _PARSE_FOOD_PROMPT = """\
 Верни ТОЛЬКО JSON. Все 4 числовых поля — итоговые целые числа, БЕЗ арифметических выражений:
 {{"calories": 620, "protein": 58, "carbs": 46, "fat": 18, "description": "Продукт 1 200г — 300 ккал\\nПродукт 2 150г — 320 ккал"}}"""
 
-
 _PARSE_PHOTO_PROMPT = """\
 Посмотри на фото еды. Определи все продукты, оцени порции и рассчитай суммарное КБЖУ.
 
@@ -143,50 +155,43 @@ _PARSE_PHOTO_PROMPT = """\
 {"calories": 620, "protein": 45, "carbs": 60, "fat": 18, "description": "Рис 200г — 220 ккал\\nКурица 150г — 250 ккал\\nОгурец — 15 ккал"}"""
 
 
-async def parse_food_photo(image_bytes: bytes) -> dict:
-    import base64
-    b64 = base64.b64encode(image_bytes).decode()
-    response = await client.chat.completions.create(
-        model=VISION_MODEL,
-        messages=[{
-            "role": "user",
-            "content": [
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                {"type": "text", "text": _PARSE_PHOTO_PROMPT},
-            ],
-        }],
-        max_tokens=400,
-        temperature=0.1,
-    )
-    return _extract_json(response.choices[0].message.content.strip())
-
-
 async def parse_food(text: str) -> dict:
-    messages = [
-        {"role": "system", "content": "Ты нутрициолог. Считаешь КБЖУ. Возвращаешь ТОЛЬКО валидный JSON с числовыми значениями — никаких арифметических выражений, только готовые числа."},
-        {"role": "user", "content": _PARSE_FOOD_PROMPT.format(text=text)},
-    ]
+    system = "Ты нутрициолог. Считаешь КБЖУ. Возвращаешь ТОЛЬКО валидный JSON с числовыми значениями — никаких арифметических выражений, только готовые числа."
     try:
-        response = await client.chat.completions.create(
-            model=MODEL, messages=messages, max_tokens=200, temperature=0.1,
-            response_format={"type": "json_object"},
-        )
-        return _extract_json(response.choices[0].message.content.strip())
+        content = await _ask(system, _PARSE_FOOD_PROMPT.format(text=text), max_tokens=300, temperature=0.1)
+        return _extract_json(content.strip())
     except Exception:
-        # Retry: отправляем упрощённый запрос без исходного текста с цифрами
         import re
         clean = re.sub(r'[~≈]?\d+[\.,]?\d*\s*(г|гр|ккал|кг|мл|л)?', '', text)
         clean = re.sub(r'[-–—•*]\s*', '', clean).strip() or text
-        response = await client.chat.completions.create(
-            model=MODEL,
-            messages=[
-                {"role": "system", "content": "Ты нутрициолог. Возвращаешь ТОЛЬКО JSON с числовыми значениями КБЖУ."},
-                {"role": "user", "content": _PARSE_FOOD_PROMPT.format(text=clean)},
-            ],
-            max_tokens=200, temperature=0.1,
-            response_format={"type": "json_object"},
+        content = await _ask(
+            "Ты нутрициолог. Возвращаешь ТОЛЬКО JSON с числовыми значениями КБЖУ.",
+            _PARSE_FOOD_PROMPT.format(text=clean),
+            max_tokens=300, temperature=0.1,
         )
-        return _extract_json(response.choices[0].message.content.strip())
+        return _extract_json(content.strip())
+
+
+async def parse_food_photo(image_bytes: bytes) -> dict:
+    import base64
+    b64 = base64.b64encode(image_bytes).decode()
+    response = await _claude.messages.create(
+        model=MODEL,
+        max_tokens=400,
+        system="Ты нутрициолог. Считаешь КБЖУ. Возвращаешь ТОЛЬКО валидный JSON с числовыми значениями — никаких арифметических выражений, только готовые числа.",
+        temperature=0.1,
+        messages=[{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
+                },
+                {"type": "text", "text": _PARSE_PHOTO_PROMPT},
+            ],
+        }],
+    )
+    return _extract_json(response.content[0].text.strip())
 
 
 async def analyze_workout(day_type: str, week_type: str, sets_data: list[dict],
@@ -195,11 +200,9 @@ async def analyze_workout(day_type: str, week_type: str, sets_data: list[dict],
         f"  {s['exercise']}: {s['actual_weight']}кг × {s['reps']} повт., RPE {s['rpe']}"
         for s in sets_data
     )
-    response = await client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": _COACH_SYSTEM},
-            {"role": "user", "content": f"""Проанализируй тренировку атлета (вес тела: {user_weight}кг).
+    return await _ask(
+        _COACH_SYSTEM,
+        f"""Проанализируй тренировку атлета (вес тела: {user_weight}кг).
 
 Тип недели: {week_type} | День: {day_type}
 
@@ -214,12 +217,9 @@ async def analyze_workout(day_type: str, week_type: str, sets_data: list[dict],
 **Итог:** общая оценка тренировки, соответствие плану (1-2 предложения)
 **Прогресс:** сравни тоннаж и RPE с прошлой тренировкой — растёт ли нагрузка?
 **Замечания:** что было не так — слишком высокий/низкий RPE, отклонения от плана
-**На следующую тренировку:** конкретные рекомендации по весам и объёму (числа!)"""}
-        ],
-        max_tokens=600,
-        temperature=0.4,
+**На следующую тренировку:** конкретные рекомендации по весам и объёму (числа!)""",
+        max_tokens=600, temperature=0.4,
     )
-    return response.choices[0].message.content
 
 
 async def generate_program(user: dict) -> tuple[list[dict], dict]:
@@ -249,11 +249,9 @@ async def generate_program(user: dict) -> tuple[list[dict], dict]:
         6: "PPL × 2 — высокочастотный тренинг для продвинутых",
     }.get(days, f"{days} разных дней")
 
-    response = await client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": _PROGRAM_SYSTEM + "\nВерни ТОЛЬКО JSON без пояснений."},
-            {"role": "user", "content": f"""Составь научно обоснованную программу тренировок и план питания.
+    content = await _ask(
+        _PROGRAM_SYSTEM + "\nВерни ТОЛЬКО JSON без пояснений.",
+        f"""Составь научно обоснованную программу тренировок и план питания.
 
 ПРОФИЛЬ АТЛЕТА:
 - Имя: {user.get('name')}
@@ -300,26 +298,20 @@ async def generate_program(user: dict) -> tuple[list[dict], dict]:
   ]
 }}
 
-Строго {days} разных day_type на каждый week_type."""}
-        ],
-        max_tokens=4000,
-        temperature=0.2,
+Строго {days} разных day_type на каждый week_type.""",
+        max_tokens=4000, temperature=0.2,
     )
 
-    content = response.choices[0].message.content.strip()
     if "```" in content:
         content = content.split("```")[1].replace("json", "").strip()
-
     data = json.loads(content)
     return data["program"], data["nutrition"]
 
 
 async def get_exercise_technique(exercise: str) -> str:
-    response = await client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": _COACH_SYSTEM},
-            {"role": "user", "content": f"""Опиши технику выполнения: «{exercise}»
+    return await _ask(
+        _COACH_SYSTEM,
+        f"""Опиши технику выполнения: «{exercise}»
 
 ВАЖНО: Описывай ТОЛЬКО это конкретное упражнение. Не переносить кью из похожих движений (наклонный жим ≠ горизонтальный: другая точка касания, угол скамьи, акцент на верх груди). Будь биомеханически точен.
 
@@ -344,21 +336,62 @@ async def get_exercise_technique(exercise: str) -> str:
 💪 ПРАВИЛЬНЫЕ ОЩУЩЕНИЯ
 Какие мышцы должны гореть и где. Что ты должен чувствовать в каждой фазе — признак правильной техники.
 
-Каждый раздел — 3-5 конкретных строк. Только практика, ноль воды."""}
-        ],
-        max_tokens=900,
-        temperature=0.2,
+Каждый раздел — 3-5 конкретных строк. Только практика, ноль воды.""",
+        max_tokens=900, temperature=0.2,
     )
-    return response.choices[0].message.content.strip()
 
 
-# Кэш: английское имя упражнения (нижний регистр) → URL картинки
+async def get_exercise_gif(exercise_name: str) -> str | None:
+    try:
+        english_name = (await _ask(
+            "",
+            f"Translate this gym exercise name to English. Reply with ONLY the English name, nothing else: {exercise_name}",
+            max_tokens=20, temperature=0,
+        )).strip().lower()
+    except Exception:
+        return None
+
+    try:
+        index = await _get_index()
+    except Exception:
+        return None
+
+    if english_name in index:
+        return index[english_name]
+    for name, url in index.items():
+        if english_name in name or name in english_name:
+            return url
+    return None
+
+
+async def get_nutrition_advice(totals: dict, goals: dict) -> str:
+    deficit = goals["calories"] - totals["calories"]
+    prot_deficit = goals["protein"] - totals["protein"]
+    return await _ask(
+        _NUTRITION_SYSTEM,
+        f"""Текущая ситуация по питанию за день:
+
+Цель: {goals['calories']} ккал | Б:{goals['protein']}г | У:{goals['carbs']}г | Ж:{goals['fat']}г
+Съедено: {totals['calories']:.0f} ккал | Б:{totals['protein']:.0f}г | У:{totals['carbs']:.0f}г | Ж:{totals['fat']:.0f}г
+Осталось: {deficit:.0f} ккал | Белка не хватает: {prot_deficit:.0f}г
+
+Дай практичный совет на оставшуюся часть дня:
+- Конкретные продукты и порции чтобы закрыть дефицит
+- Приоритет — добрать белок если его не хватает (критично для мышц)
+- Если цель выполнена — что можно позволить или как завершить день
+
+Ответ 3-4 строки, конкретно.""",
+        max_tokens=250, temperature=0.4,
+    )
+
+
+# ── Кэш гифок упражнений ─────────────────────────────────────────────────────
+
 _exercise_index: dict[str, str] | None = None
-_index_lock = None  # asyncio.Lock создаётся при первом вызове
+_index_lock = None
 
 
 async def _build_exercise_index() -> dict[str, str]:
-    """Скачивает все упражнения с картинками из wger и строит индекс name→url."""
     index: dict[str, str] = {}
     timeout = aiohttp.ClientTimeout(total=30)
     async with aiohttp.ClientSession(timeout=timeout) as s:
@@ -377,7 +410,6 @@ async def _build_exercise_index() -> dict[str, str]:
                 if en:
                     index[en[0]["name"].lower()] = id_to_url[ex["id"]]
             url = page.get("next")
-
     return index
 
 
@@ -393,58 +425,3 @@ async def _get_index() -> dict[str, str]:
             except Exception:
                 _exercise_index = {}
     return _exercise_index
-
-
-async def get_exercise_gif(exercise_name: str) -> str | None:
-    """Возвращает URL картинки упражнения из wger.de или None."""
-    try:
-        resp = await client.chat.completions.create(
-            model=MODEL,
-            messages=[{"role": "user", "content": f"Translate this gym exercise name to English. Reply with ONLY the English name, nothing else: {exercise_name}"}],
-            max_tokens=20,
-            temperature=0,
-        )
-        english_name = resp.choices[0].message.content.strip().lower()
-    except Exception:
-        return None
-
-    try:
-        index = await _get_index()
-    except Exception:
-        return None
-
-    if english_name in index:
-        return index[english_name]
-
-    for name, url in index.items():
-        if english_name in name or name in english_name:
-            return url
-
-    return None
-
-
-async def get_nutrition_advice(totals: dict, goals: dict) -> str:
-    deficit = goals["calories"] - totals["calories"]
-    prot_deficit = goals["protein"] - totals["protein"]
-
-    response = await client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": _NUTRITION_SYSTEM},
-            {"role": "user", "content": f"""Текущая ситуация по питанию за день:
-
-Цель: {goals['calories']} ккал | Б:{goals['protein']}г | У:{goals['carbs']}г | Ж:{goals['fat']}г
-Съедено: {totals['calories']:.0f} ккал | Б:{totals['protein']:.0f}г | У:{totals['carbs']:.0f}г | Ж:{totals['fat']:.0f}г
-Осталось: {deficit:.0f} ккал | Белка не хватает: {prot_deficit:.0f}г
-
-Дай практичный совет на оставшуюся часть дня:
-- Конкретные продукты и порции чтобы закрыть дефицит
-- Приоритет — добрать белок если его не хватает (критично для мышц)
-- Если цель выполнена — что можно позволить или как завершить день
-
-Ответ 3-4 строки, конкретно."""}
-        ],
-        max_tokens=250,
-        temperature=0.4,
-    )
-    return response.choices[0].message.content

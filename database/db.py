@@ -237,7 +237,15 @@ async def get_user_week_types(user_id: int) -> list[str]:
 async def get_user(user_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cur:
+        async with db.execute(
+            """SELECT user_id, name, age, weight, height, goal, experience,
+                      days_per_week, equipment, injuries,
+                      goal_calories, goal_protein, goal_carbs, goal_fat,
+                      current_week, current_week_type, current_day_index,
+                      onboarded, created_at
+               FROM users WHERE user_id = ?""",
+            (user_id,)
+        ) as cur:
             row = await cur.fetchone()
             return dict(row) if row else None
 
@@ -266,6 +274,23 @@ async def update_user(user_id: int, **kwargs):
     values = list(kwargs.values()) + [user_id]
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(f"UPDATE users SET {fields} WHERE user_id = ?", values)
+        await db.commit()
+
+
+async def reset_user_cycle(user_id: int):
+    """Сбрасывает цикл тренировок пользователя на начальные значения."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET current_week=1, current_week_type='strength', current_day_index=0 WHERE user_id=?",
+            (user_id,)
+        )
+        await db.commit()
+
+
+async def delete_user_program(user_id: int):
+    """Удаляет всю программу тренировок пользователя."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM user_program WHERE user_id=?", (user_id,))
         await db.commit()
 
 
@@ -344,18 +369,7 @@ async def finish_workout(workout_id: int, total_tonnage: float, avg_rpe: float, 
         await db.commit()
 
 
-async def update_workout_progress(workout_id: int, ex_index: int, set_index: int):
-    """Сохраняет текущий прогресс тренировки для возможности продолжить."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "UPDATE workouts SET ex_index=?, set_index=? WHERE id=?",
-            (ex_index, set_index, workout_id)
-        )
-        await db.commit()
-
-
 async def get_active_workout(user_id: int) -> dict | None:
-    """Возвращает незавершённую тренировку пользователя если есть."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -366,14 +380,36 @@ async def get_active_workout(user_id: int) -> dict | None:
             return dict(row) if row else None
 
 
-async def discard_all_active_workouts(user_id: int):
-    """Помечает все незавершённые тренировки пользователя как завершённые."""
+async def update_workout_progress(workout_id: int, ex_index: int, set_index: int):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE workouts SET is_finished=1 WHERE user_id=? AND is_finished=0", (user_id,))
+        await db.execute(
+            "UPDATE workouts SET ex_index=?, set_index=? WHERE id=?",
+            (ex_index, set_index, workout_id)
+        )
         await db.commit()
 
 
-async def get_last_workouts(user_id: int, limit: int = 6) -> list[dict]:
+async def discard_all_active_workouts(user_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE workouts SET is_finished=1 WHERE user_id=? AND is_finished=0",
+            (user_id,)
+        )
+        await db.commit()
+
+
+async def get_last_workout_by_day(user_id: int, day_type: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM workouts WHERE user_id=? AND day_type=? AND is_finished=1 ORDER BY date DESC LIMIT 1",
+            (user_id, day_type)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def get_last_workouts(user_id: int, limit: int = 5) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -387,29 +423,154 @@ async def get_workout_sets(workout_id: int) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM workout_sets WHERE workout_id=? ORDER BY exercise, set_number",
+            "SELECT * FROM workout_sets WHERE workout_id=? ORDER BY set_number",
             (workout_id,)
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
 
 
-async def get_last_workout_by_day(user_id: int, day_type: str) -> dict | None:
+async def get_workout_set(set_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM workouts WHERE user_id=? AND day_type=? ORDER BY date DESC LIMIT 1",
-            (user_id, day_type)
-        ) as cur:
+        async with db.execute("SELECT * FROM workout_sets WHERE id=?", (set_id,)) as cur:
             row = await cur.fetchone()
             return dict(row) if row else None
 
 
-# ── Редактирование питания ─────────────────────────────────────────────────────
+async def update_workout_set(set_id: int, weight: float, reps: int, rpe: float):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE workout_sets SET actual_weight=?, reps=?, rpe=? WHERE id=?",
+            (weight, reps, rpe, set_id)
+        )
+        await db.commit()
+
+
+async def delete_workout_set(set_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM workout_sets WHERE id=?", (set_id,))
+        await db.commit()
+
+
+async def recalculate_workout_totals(workout_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT actual_weight, reps, rpe FROM workout_sets WHERE workout_id=?",
+            (workout_id,)
+        ) as cur:
+            sets = await cur.fetchall()
+        tonnage = sum(s[0] * s[1] for s in sets) if sets else 0
+        avg_rpe = sum(s[2] for s in sets) / len(sets) if sets else 0
+        await db.execute(
+            "UPDATE workouts SET total_tonnage=?, avg_rpe=? WHERE id=?",
+            (tonnage, avg_rpe, workout_id)
+        )
+        await db.commit()
+
+
+async def get_recent_workouts(user_id: int, limit: int = 10) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM workouts WHERE user_id=? AND is_finished=1 ORDER BY date DESC LIMIT ?",
+            (user_id, limit)
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_last_workouts_rich(user_id: int, limit: int = 5) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT w.*, COUNT(s.id) as set_count
+               FROM workouts w
+               LEFT JOIN workout_sets s ON s.workout_id = w.id
+               WHERE w.user_id=? AND w.is_finished=1 AND w.total_tonnage > 0
+               GROUP BY w.id ORDER BY w.date DESC LIMIT ?""",
+            (user_id, limit)
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_all_time_stats(user_id: int) -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*), COALESCE(SUM(total_tonnage), 0) FROM workouts WHERE user_id=? AND is_finished=1 AND total_tonnage > 0",
+            (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return {"total_workouts": row[0] or 0, "total_tonnage": row[1] or 0}
+
+
+async def get_exercise_prs(user_id: int, limit: int = 6) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT s.exercise, MAX(s.actual_weight) as max_weight, s.reps
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1 AND s.actual_weight > 0
+               GROUP BY s.exercise ORDER BY max_weight DESC LIMIT ?""",
+            (user_id, limit)
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_nutrition_week_avg(user_id: int) -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT COUNT(DISTINCT date), AVG(cal), AVG(prot), AVG(carb), AVG(fat)
+               FROM (
+                   SELECT date, SUM(calories) as cal, SUM(protein) as prot,
+                          SUM(carbs) as carb, SUM(fat) as fat
+                   FROM food_log
+                   WHERE user_id=? AND date >= date('now', '-6 days')
+                   GROUP BY date
+               )""",
+            (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return {
+                "days_tracked": row[0] or 0, "avg_calories": row[1] or 0,
+                "avg_protein":  row[2] or 0, "avg_carbs":    row[3] or 0,
+                "avg_fat":      row[4] or 0,
+            }
+
+
+async def get_meal_reminders(user_id: int) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT meal_id, enabled, hour, minute FROM meal_reminders WHERE user_id=?",
+            (user_id,)
+        ) as cur:
+            saved = {r["meal_id"]: dict(r) for r in await cur.fetchall()}
+    result = []
+    for m in DEFAULT_MEALS:
+        s = saved.get(m["id"], {})
+        result.append({
+            "meal_id": m["id"], "name": m["name"],
+            "enabled": s.get("enabled", 1),
+            "hour": s.get("hour", m["hour"]),
+            "minute": s.get("minute", m["minute"]),
+        })
+    return result
+
+
+async def set_meal_reminder(user_id: int, meal_id: str, enabled: int, hour: int, minute: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO meal_reminders (user_id, meal_id, enabled, hour, minute) VALUES (?,?,?,?,?)
+               ON CONFLICT(user_id, meal_id) DO UPDATE SET
+               enabled=excluded.enabled, hour=excluded.hour, minute=excluded.minute""",
+            (user_id, meal_id, enabled, hour, minute)
+        )
+        await db.commit()
+
 
 async def get_food_entry(entry_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM food_log WHERE id = ?", (entry_id,)) as cur:
+        async with db.execute("SELECT * FROM food_log WHERE id=?", (entry_id,)) as cur:
             row = await cur.fetchone()
             return dict(row) if row else None
 
@@ -426,185 +587,35 @@ async def update_food_entry(entry_id: int, description: str, calories: float,
 
 async def delete_food_entry(entry_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("DELETE FROM food_log WHERE id = ?", (entry_id,))
+        await db.execute("DELETE FROM food_log WHERE id=?", (entry_id,))
         await db.commit()
 
 
-async def get_food_log_dates(user_id: int, limit: int = 14) -> list[dict]:
-    """Даты с записями питания (новые сначала) + кол-во записей за день."""
+async def get_food_log_dates(user_id: int) -> list[str]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            "SELECT date, COUNT(*) as cnt FROM food_log WHERE user_id=? "
-            "GROUP BY date ORDER BY date DESC LIMIT ?",
-            (user_id, limit)
+            "SELECT DISTINCT date FROM food_log WHERE user_id=? ORDER BY date DESC LIMIT 14",
+            (user_id,)
         ) as cur:
-            return [{"date": r[0], "count": r[1]} for r in await cur.fetchall()]
+            return [r[0] for r in await cur.fetchall()]
 
-
-# ── Редактирование тренировок ──────────────────────────────────────────────────
 
 async def get_workout_set(set_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM workout_sets WHERE id = ?", (set_id,)) as cur:
+        async with db.execute("SELECT * FROM workout_sets WHERE id=?", (set_id,)) as cur:
             row = await cur.fetchone()
             return dict(row) if row else None
 
 
-async def update_workout_set(set_id: int, actual_weight: float, reps: int, rpe: float):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "UPDATE workout_sets SET actual_weight=?, reps=?, rpe=? WHERE id=?",
-            (actual_weight, reps, rpe, set_id)
-        )
-        await db.commit()
-
-
-async def delete_workout_set(set_id: int):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("DELETE FROM workout_sets WHERE id = ?", (set_id,))
-        await db.commit()
-
-
-async def recalculate_workout_totals(workout_id: int):
-    """Пересчитывает тоннаж и средний RPE после изменения подходов."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT SUM(actual_weight * reps), AVG(rpe) FROM workout_sets WHERE workout_id=?",
-            (workout_id,)
-        ) as cur:
-            row = await cur.fetchone()
-        await db.execute(
-            "UPDATE workouts SET total_tonnage=?, avg_rpe=? WHERE id=?",
-            (row[0] or 0, row[1] or 0, workout_id)
-        )
-        await db.commit()
-
-
-async def get_recent_workouts(user_id: int, limit: int = 10) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM workouts WHERE user_id=? ORDER BY date DESC LIMIT ?",
-            (user_id, limit)
-        ) as cur:
-            return [dict(r) for r in await cur.fetchall()]
-
-
-async def get_last_workouts_rich(user_id: int, limit: int = 5) -> list[dict]:
-    """Последние завершённые тренировки с количеством подходов. Пустые (тоннаж=0) исключены."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """SELECT w.*, COUNT(ws.id) as set_count
-               FROM workouts w
-               LEFT JOIN workout_sets ws ON ws.workout_id = w.id
-               WHERE w.user_id=? AND w.is_finished=1 AND w.total_tonnage > 0
-               GROUP BY w.id
-               ORDER BY w.date DESC LIMIT ?""",
-            (user_id, limit)
-        ) as cur:
-            return [dict(r) for r in await cur.fetchall()]
-
-
-async def get_all_time_stats(user_id: int) -> dict:
-    """Суммарное кол-во тренировок и общий тоннаж."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            "SELECT COUNT(*), COALESCE(SUM(total_tonnage), 0) FROM workouts WHERE user_id=? AND is_finished=1 AND total_tonnage > 0",
-            (user_id,)
-        ) as cur:
-            row = await cur.fetchone()
-            return {"total_workouts": row[0] or 0, "total_tonnage": row[1] or 0}
-
-
-async def get_exercise_prs(user_id: int, limit: int = 6) -> list[dict]:
-    """Максимальный вес на снаряде по каждому упражнению."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            """SELECT ws.exercise, MAX(ws.actual_weight) as max_weight, ws.reps
-               FROM workout_sets ws
-               JOIN workouts w ON ws.workout_id = w.id
-               WHERE w.user_id=? AND w.is_finished=1 AND ws.actual_weight > 0
-               GROUP BY ws.exercise
-               ORDER BY max_weight DESC LIMIT ?""",
-            (user_id, limit)
-        ) as cur:
-            return [dict(r) for r in await cur.fetchall()]
-
-
-async def get_nutrition_week_avg(user_id: int) -> dict:
-    """Средние показатели питания за последние 7 дней (только дни с записями)."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            """SELECT AVG(dc) as avg_cal, AVG(dp) as avg_prot,
-                      AVG(dca) as avg_carbs, AVG(df) as avg_fat, COUNT(*) as days
-               FROM (
-                   SELECT date,
-                          SUM(calories) as dc, SUM(protein) as dp,
-                          SUM(carbs) as dca, SUM(fat) as df
-                   FROM food_log
-                   WHERE user_id=? AND date >= date('now', '-6 days')
-                     AND (calories > 0 OR protein > 0 OR carbs > 0 OR fat > 0)
-                   GROUP BY date
-               )""",
-            (user_id,)
-        ) as cur:
-            row = await cur.fetchone()
-            return {
-                "avg_calories": row[0] or 0,
-                "avg_protein": row[1] or 0,
-                "avg_carbs": row[2] or 0,
-                "avg_fat": row[3] or 0,
-                "days_tracked": row[4] or 0,
-            }
-
-
-async def get_meal_reminders(user_id: int) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT meal_id, enabled, hour, minute FROM meal_reminders WHERE user_id=?",
-            (user_id,)
-        ) as cur:
-            saved = {r["meal_id"]: dict(r) for r in await cur.fetchall()}
-    result = []
-    for m in DEFAULT_MEALS:
-        s = saved.get(m["id"], {})
-        result.append({
-            "meal_id": m["id"],
-            "name": m["name"],
-            "enabled": s.get("enabled", 1),
-            "hour": s.get("hour", m["hour"]),
-            "minute": s.get("minute", m["minute"]),
-        })
-    return result
-
-
-async def set_meal_reminder(user_id: int, meal_id: str, enabled: int, hour: int, minute: int):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            """INSERT INTO meal_reminders (user_id, meal_id, enabled, hour, minute)
-               VALUES (?,?,?,?,?)
-               ON CONFLICT(user_id, meal_id) DO UPDATE SET
-               enabled=excluded.enabled, hour=excluded.hour, minute=excluded.minute""",
-            (user_id, meal_id, enabled, hour, minute)
-        )
-        await db.commit()
-
-
-# ── Шаблоны питания ────────────────────────────────────────────────────────────
-
 async def save_food_template(user_id: int, name: str, description: str,
-                              calories: float, protein: float, carbs: float, fat: float) -> int:
+                              calories: float, protein: float, carbs: float, fat: float):
     async with aiosqlite.connect(DB_PATH) as db:
-        cur = await db.execute(
+        await db.execute(
             "INSERT INTO food_templates (user_id, name, description, calories, protein, carbs, fat) VALUES (?,?,?,?,?,?,?)",
             (user_id, name, description, calories, protein, carbs, fat)
         )
         await db.commit()
-        return cur.lastrowid
 
 
 async def get_food_templates(user_id: int) -> list[dict]:
@@ -634,71 +645,80 @@ async def delete_food_template(template_id: int, user_id: int):
         await db.commit()
 
 
-# ── Недельная статистика ───────────────────────────────────────────────────────
-
-async def get_week_workouts(user_id: int, start: str, end: str) -> list[dict]:
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT * FROM workouts WHERE user_id=? AND date BETWEEN ? AND ? AND is_finished=1 ORDER BY date",
-            (user_id, start, end)
-        ) as cur:
-            return [dict(r) for r in await cur.fetchall()]
-
-
-async def get_week_nutrition_avg(user_id: int, start: str, end: str) -> dict:
+async def get_tonnage_by_weeks(user_id: int, n_weeks: int = 8) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            """SELECT AVG(d.calories), AVG(d.protein), AVG(d.carbs), AVG(d.fat), COUNT(*)
-               FROM (SELECT date, SUM(calories) calories, SUM(protein) protein,
-                            SUM(carbs) carbs, SUM(fat) fat
-                     FROM food_log WHERE user_id=? AND date BETWEEN ? AND ?
-                     GROUP BY date) d""",
-            (user_id, start, end)
+            """SELECT strftime('%Y-W%W', date) as week_label, SUM(total_tonnage) as tonnage
+               FROM workouts
+               WHERE user_id=? AND is_finished=1 AND date >= date('now', ? || ' days')
+               GROUP BY week_label ORDER BY week_label""",
+            (user_id, f"-{n_weeks * 7}")
         ) as cur:
-            row = await cur.fetchone()
-            return {
-                "avg_calories": row[0] or 0, "avg_protein": row[1] or 0,
-                "avg_carbs": row[2] or 0,    "avg_fat": row[3] or 0,
-                "days_tracked": row[4] or 0,
-            }
-
-
-async def get_week_exercise_weights(user_id: int, start: str, end: str) -> dict:
-    """Максимальный вес по каждому упражнению за период."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            """SELECT ws.exercise, MAX(ws.actual_weight)
-               FROM workout_sets ws JOIN workouts w ON ws.workout_id=w.id
-               WHERE w.user_id=? AND w.date BETWEEN ? AND ? AND w.is_finished=1 AND ws.actual_weight > 0
-               GROUP BY ws.exercise""",
-            (user_id, start, end)
-        ) as cur:
-            return {r[0]: r[1] for r in await cur.fetchall()}
+            return [{"week_label": r[0], "tonnage": r[1] or 0} for r in await cur.fetchall()]
 
 
 async def get_best_sets_for_1rm(user_id: int) -> list[dict]:
-    """Все подходы reps 1–12 для расчёта 1RM. actual_weight может быть 0 (своё тело)."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            """SELECT ws.exercise, ws.actual_weight, ws.reps
-               FROM workout_sets ws JOIN workouts w ON ws.workout_id=w.id
-               WHERE w.user_id=? AND w.is_finished=1 AND ws.reps BETWEEN 1 AND 12
-               ORDER BY ws.exercise""",
+            """SELECT s.exercise, s.actual_weight as weight, s.reps
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1 AND s.reps BETWEEN 1 AND 12
+               ORDER BY s.exercise""",
             (user_id,)
         ) as cur:
             return [{"exercise": r[0], "weight": r[1], "reps": r[2]} for r in await cur.fetchall()]
 
 
 async def get_muscle_volume(user_id: int, days: int = 28) -> list[dict]:
-    """Тоннаж (вес × повторы) за последние N дней для анализа мышечного баланса."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
-            """SELECT ws.exercise, SUM(ws.actual_weight * ws.reps) AS volume
-               FROM workout_sets ws JOIN workouts w ON ws.workout_id=w.id
-               WHERE w.user_id=? AND w.is_finished=1 AND ws.actual_weight > 0
+            """SELECT s.exercise, SUM(s.actual_weight * s.reps) as volume
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1 AND s.actual_weight > 0
                  AND w.date >= date('now', ? || ' days')
-               GROUP BY ws.exercise""",
+               GROUP BY s.exercise""",
             (user_id, f"-{days}")
         ) as cur:
             return [{"exercise": r[0], "volume": r[1]} for r in await cur.fetchall()]
+
+
+async def get_week_workouts(user_id: int, week_start: str, week_end: str) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM workouts WHERE user_id=? AND is_finished=1 AND date BETWEEN ? AND ? ORDER BY date",
+            (user_id, week_start, week_end)
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_week_nutrition_avg(user_id: int, week_start: str, week_end: str) -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT COUNT(DISTINCT date), AVG(cal), AVG(prot), AVG(carb), AVG(fat)
+               FROM (
+                   SELECT date, SUM(calories) as cal, SUM(protein) as prot,
+                          SUM(carbs) as carb, SUM(fat) as fat
+                   FROM food_log WHERE user_id=? AND date BETWEEN ? AND ?
+                   GROUP BY date
+               )""",
+            (user_id, week_start, week_end)
+        ) as cur:
+            row = await cur.fetchone()
+            return {
+                "days_tracked": row[0] or 0, "avg_calories": row[1] or 0,
+                "avg_protein":  row[2] or 0, "avg_carbs":    row[3] or 0,
+                "avg_fat":      row[4] or 0,
+            }
+
+
+async def get_week_exercise_weights(user_id: int, week_start: str, week_end: str) -> dict[str, float]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT s.exercise, MAX(s.actual_weight)
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1 AND w.date BETWEEN ? AND ? AND s.actual_weight > 0
+               GROUP BY s.exercise""",
+            (user_id, week_start, week_end)
+        ) as cur:
+            return {r[0]: r[1] for r in await cur.fetchall()}
