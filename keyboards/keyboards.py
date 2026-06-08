@@ -22,6 +22,16 @@ def main_menu(day_label: str = None, week_label: str = None) -> ReplyKeyboardMar
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
 
+def stats_menu() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="📊 График тоннажа")],
+            [KeyboardButton(text="🏆 Личные рекорды")],
+            [KeyboardButton(text="🏠 Главное меню")],
+        ],
+        resize_keyboard=True
+    )
+
 
 def nutrition_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
