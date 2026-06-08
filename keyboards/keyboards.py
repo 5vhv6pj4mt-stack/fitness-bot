@@ -59,6 +59,18 @@ def workout_logging_keyboard(exercise: str, set_num: int, total_sets: int,
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def exercise_prompt_hint(plan_weight: float) -> str:
+    """Возвращает текст подсказки под полем ввода подхода.
+
+    Включает hint об изменении веса текстовыми командами, если упражнение
+    предполагает вес (plan_weight > 0).
+    """
+    hint = "Введите результат подхода или воспользуйтесь кнопками ниже."
+    if plan_weight > 0:
+        hint += "\n💡 Изменить вес: +2.5 / -5 / вес 80"
+    return hint
+
+
 def _fmt_rest(seconds: int) -> str:
     m, s = divmod(seconds, 60)
     return f"{m}:{s:02d}" if s else f"{m} мин"
