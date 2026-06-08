@@ -530,10 +530,45 @@ async def abort_workout_to_main(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+def parse_weight_command(text: str) -> tuple[str, float] | None:
+    """Распознаёт команды изменения веса.
+    Возвращает ('delta', value) или ('abs', value) или None.
+    """
+    t = text.strip().replace(",", ".")
+    m = re.match(r'^([+-])(\d+(?:\.\d+)?)$', t)
+    if m:
+        sign, val = m.group(1), float(m.group(2))
+        return ("delta", val if sign == "+" else -val)
+    m = re.match(r'^(?:вес|weight)\s+(\d+(?:\.\d+)?)$', t.lower())
+    if m:
+        return ("abs", float(m.group(1)))
+    return None
+
+
 @router.message(WorkoutLogging.logging_sets, ~F.text.in_(_NAV_PASSTHROUGH), ~F.text.startswith("/"))
 async def log_set(message: Message, state: FSMContext):
     if not message.text:
         return
+
+    # Сначала проверяем команду изменения веса
+    weight_cmd = parse_weight_command(message.text)
+    if weight_cmd:
+        _cancel_rest_timer(message.chat.id)
+        await _try_delete(message.bot, message.chat.id, message.message_id)
+        data = await state.get_data()
+        cur_w = data.get("current_weight", 0)
+        kind, val = weight_cmd
+        new_w = (cur_w + val) if kind == "delta" else val
+        if new_w <= 0:
+            await message.answer("❌ Вес должен быть больше 0", parse_mode="HTML")
+            return
+        await state.update_data(current_weight=new_w)
+        data = await state.get_data()  # обновлённые данные
+        text, kb = _build_set_prompt(data)
+        sent = await message.answer(f"✅ Вес → <b>{new_w:.1f} кг</b>\n\n" + text, parse_mode="HTML", reply_markup=kb)
+        await track_msg(state, sent.message_id)
+        return
+
     _cancel_rest_timer(message.chat.id)
     await _try_delete(message.bot, message.chat.id, message.message_id)
 
@@ -541,7 +576,11 @@ async def log_set(message: Message, state: FSMContext):
     ex = data["exercises"][data["ex_index"]]
     parsed = parse_set_input(message.text)
     if not parsed:
-        await message.answer("❌ Не понял формат. Напиши: <code>50 8 7</code>", parse_mode="HTML")
+        await message.answer(
+            "❌ Не понял формат. Напиши: <code>50 8 7</code>\n"
+            "💡 Изменить вес: <code>+2.5</code> / <code>-5</code> / <code>вес 80</code>",
+            parse_mode="HTML"
+        )
         return
 
     weight, reps, rpe, notes = parsed
