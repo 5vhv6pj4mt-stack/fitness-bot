@@ -163,3 +163,12 @@ def finish_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✅ Да, завершить", callback_data="confirm_finish")],
         [InlineKeyboardButton(text="↩️ Продолжить", callback_data="continue_workout")],
     ])
+
+
+def reset_confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Да, сбросить цикл", callback_data="reset_confirm"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="reset_cancel"),
+        ],
+    ])

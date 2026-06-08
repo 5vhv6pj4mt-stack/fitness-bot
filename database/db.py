@@ -237,7 +237,15 @@ async def get_user_week_types(user_id: int) -> list[str]:
 async def get_user(user_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cur:
+        async with db.execute(
+            """SELECT user_id, name, age, weight, height, goal, experience,
+                      days_per_week, equipment, injuries,
+                      goal_calories, goal_protein, goal_carbs, goal_fat,
+                      current_week, current_week_type, current_day_index,
+                      onboarded, created_at
+               FROM users WHERE user_id = ?""",
+            (user_id,)
+        ) as cur:
             row = await cur.fetchone()
             return dict(row) if row else None
 
@@ -266,6 +274,23 @@ async def update_user(user_id: int, **kwargs):
     values = list(kwargs.values()) + [user_id]
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(f"UPDATE users SET {fields} WHERE user_id = ?", values)
+        await db.commit()
+
+
+async def reset_user_cycle(user_id: int):
+    """Сбрасывает цикл тренировок пользователя на начальные значения."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET current_week=1, current_week_type='strength', current_day_index=0 WHERE user_id=?",
+            (user_id,)
+        )
+        await db.commit()
+
+
+async def delete_user_program(user_id: int):
+    """Удаляет всю программу тренировок пользователя."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM user_program WHERE user_id=?", (user_id,))
         await db.commit()
 
 
@@ -319,24 +344,4 @@ async def create_workout(user_id: int, date: str, day_type: str,
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
             "INSERT INTO workouts (user_id, date, day_type, week_number, week_type) VALUES (?,?,?,?,?)",
-            (user_id, date, day_type, week_number, week_type)
-        )
-        await db.commit()
-        return cur.lastrowid
-
-
-async def save_set(workout_id: int, exercise: str, set_number: int,
-                   planned_weight: float, actual_weight: float, reps: int, rpe: float, notes: str = None):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO workout_sets (workout_id, exercise, set_number, planned_weight, actual_weight, reps, rpe, notes) VALUES (?,?,?,?,?,?,?,?)",
-            (workout_id, exercise, set_number, planned_weight, actual_weight, reps, rpe, notes)
-        )
-        await db.commit()
-
-
-async def finish_workout(workout_id: int, total_tonnage: float, avg_rpe: float, notes: str = None):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "UPDATE workouts SET total_tonnage=?, avg_rpe=?, notes=?, is_finished=1 WHERE id=?",
-            (total_tonnage, avg_rpe, notes, workout_id)
+            (user_id, date, day_type, week_number, week

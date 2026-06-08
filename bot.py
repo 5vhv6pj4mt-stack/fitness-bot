@@ -58,6 +58,7 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="summary",  description="📋 Сводка на сегодня"),
         BotCommand(command="stats",    description="📊 Статистика"),
         BotCommand(command="settings", description="⚙️ Настройки"),
+        BotCommand(command="reset",    description="🔄 Пересоздать программу тренировок"),
     ]
     await bot.set_my_commands(commands)
     await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
