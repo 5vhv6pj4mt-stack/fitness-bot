@@ -2,7 +2,10 @@
 .env
 
 # База данных
-fitness.db
+*.db
+
+# PID файлы
+*.pid
 
 # Логи
 *.log

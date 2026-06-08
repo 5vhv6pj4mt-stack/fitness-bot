@@ -7,6 +7,7 @@ client = AsyncGroq(api_key=GROQ_API_KEY)
 _sync_client = Groq(api_key=GROQ_API_KEY)
 
 MODEL = "llama-3.3-70b-versatile"
+VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 # ── Экспертные системные промты ───────────────────────────────────────────────
 
@@ -78,25 +79,114 @@ async def transcribe_voice(audio_bytes: bytes, filename: str = "voice.ogg") -> s
     return result.text
 
 
-async def parse_food(text: str) -> dict:
-    response = await client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": _NUTRITION_SYSTEM + "\n\nПри анализе еды возвращай ТОЛЬКО JSON без пояснений."},
-            {"role": "user", "content": f"""Определи КБЖУ для: "{text}"
+def _fix_json_strings(s: str) -> str:
+    """Escape literal control chars inside JSON string values."""
+    result = []
+    in_string = False
+    escaped = False
+    for ch in s:
+        if escaped:
+            result.append(ch)
+            escaped = False
+        elif ch == '\\' and in_string:
+            result.append(ch)
+            escaped = True
+        elif ch == '"':
+            result.append(ch)
+            in_string = not in_string
+        elif in_string and ch == '\n':
+            result.append('\\n')
+        elif in_string and ch == '\r':
+            result.append('\\r')
+        elif in_string and ch == '\t':
+            result.append('\\t')
+        else:
+            result.append(ch)
+    return ''.join(result)
 
-Используй точные данные из баз USDA/Роспотребнадзор. Если количество не указано — стандартная порция (200-250г для основных блюд, 30-50г для добавок).
 
-Верни ТОЛЬКО JSON:
-{{"calories": число, "protein": число, "carbs": число, "fat": число, "description": "краткое описание блюда"}}"""}
-        ],
-        max_tokens=200,
-        temperature=0.1,
-    )
-    content = response.choices[0].message.content.strip()
+def _extract_json(content: str) -> dict:
     if "```" in content:
         content = content.split("```")[1].replace("json", "").strip()
-    return json.loads(content)
+    content = _fix_json_strings(content)
+    data = json.loads(content)
+    for key in ("calories", "protein", "carbs", "fat"):
+        if key in data:
+            data[key] = float(str(data[key]).replace(",", ".").split()[0])
+    return data
+
+
+_PARSE_FOOD_PROMPT = """\
+Определи суммарное КБЖУ для всей еды: "{text}"
+
+Правила:
+- Игнорируй любые числа КБЖУ, если они уже указаны в тексте — считай сам по ингредиентам
+- Если количество не указано — стандартная порция (200-250г для блюд, 30-50г для добавок)
+- Используй данные USDA/Роспотребнадзор
+- В поле description перечисли КАЖДЫЙ продукт отдельной строкой через \\n, формат: "Название количество — X ккал"
+  Пример: "Рис бурый 200г — 220 ккал\\nКурица со сметаной 200г — 330 ккал\\nМасло льняное 8мл — 70 ккал"
+- Не объединяй продукты в одну строку
+
+Верни ТОЛЬКО JSON. Все 4 числовых поля — итоговые целые числа, БЕЗ арифметических выражений:
+{{"calories": 620, "protein": 58, "carbs": 46, "fat": 18, "description": "Продукт 1 200г — 300 ккал\\nПродукт 2 150г — 320 ккал"}}"""
+
+
+_PARSE_PHOTO_PROMPT = """\
+Посмотри на фото еды. Определи все продукты, оцени порции и рассчитай суммарное КБЖУ.
+
+Правила:
+- Если вес неясен — используй стандартные порции (200-250г для основных блюд)
+- В description перечисли КАЖДЫЙ продукт с новой строки: "Название ~вес — X ккал"
+- Используй данные USDA/Роспотребнадзор
+
+Верни ТОЛЬКО JSON (без markdown, без пояснений):
+{"calories": 620, "protein": 45, "carbs": 60, "fat": 18, "description": "Рис 200г — 220 ккал\\nКурица 150г — 250 ккал\\nОгурец — 15 ккал"}"""
+
+
+async def parse_food_photo(image_bytes: bytes) -> dict:
+    import base64
+    b64 = base64.b64encode(image_bytes).decode()
+    response = await client.chat.completions.create(
+        model=VISION_MODEL,
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                {"type": "text", "text": _PARSE_PHOTO_PROMPT},
+            ],
+        }],
+        max_tokens=400,
+        temperature=0.1,
+    )
+    return _extract_json(response.choices[0].message.content.strip())
+
+
+async def parse_food(text: str) -> dict:
+    messages = [
+        {"role": "system", "content": "Ты нутрициолог. Считаешь КБЖУ. Возвращаешь ТОЛЬКО валидный JSON с числовыми значениями — никаких арифметических выражений, только готовые числа."},
+        {"role": "user", "content": _PARSE_FOOD_PROMPT.format(text=text)},
+    ]
+    try:
+        response = await client.chat.completions.create(
+            model=MODEL, messages=messages, max_tokens=200, temperature=0.1,
+            response_format={"type": "json_object"},
+        )
+        return _extract_json(response.choices[0].message.content.strip())
+    except Exception:
+        # Retry: отправляем упрощённый запрос без исходного текста с цифрами
+        import re
+        clean = re.sub(r'[~≈]?\d+[\.,]?\d*\s*(г|гр|ккал|кг|мл|л)?', '', text)
+        clean = re.sub(r'[-–—•*]\s*', '', clean).strip() or text
+        response = await client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "system", "content": "Ты нутрициолог. Возвращаешь ТОЛЬКО JSON с числовыми значениями КБЖУ."},
+                {"role": "user", "content": _PARSE_FOOD_PROMPT.format(text=clean)},
+            ],
+            max_tokens=200, temperature=0.1,
+            response_format={"type": "json_object"},
+        )
+        return _extract_json(response.choices[0].message.content.strip())
 
 
 async def analyze_workout(day_type: str, week_type: str, sets_data: list[dict],
@@ -272,12 +362,10 @@ async def _build_exercise_index() -> dict[str, str]:
     index: dict[str, str] = {}
     timeout = aiohttp.ClientTimeout(total=30)
     async with aiohttp.ClientSession(timeout=timeout) as s:
-        # Шаг 1: получаем все главные картинки → {exercise_id: url}
         async with s.get("https://wger.de/api/v2/exerciseimage/?format=json&limit=300&is_main=True") as r:
             img_data = await r.json()
         id_to_url: dict[int, str] = {img["exercise"]: img["image"] for img in img_data.get("results", [])}
 
-        # Шаг 2: пагинируем exerciseinfo, берём английские названия
         url: str | None = "https://wger.de/api/v2/exerciseinfo/?format=json&limit=100"
         while url:
             async with s.get(url) as r:
@@ -325,11 +413,9 @@ async def get_exercise_gif(exercise_name: str) -> str | None:
     except Exception:
         return None
 
-    # Точное совпадение
     if english_name in index:
         return index[english_name]
 
-    # Частичное совпадение (поиск подстроки в обе стороны)
     for name, url in index.items():
         if english_name in name or name in english_name:
             return url

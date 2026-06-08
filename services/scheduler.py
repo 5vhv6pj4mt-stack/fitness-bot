@@ -1,52 +1,156 @@
-"""Планировщик напоминаний о приёмах пищи."""
+"""Планировщик ежедневных напоминаний о приёмах пищи."""
 import logging
-from datetime import datetime, timedelta
+from datetime import date, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from database.db import was_food_logged_recently
 
 logger = logging.getLogger(__name__)
 
 _scheduler: AsyncIOScheduler = None
 _bot: Bot = None
 
+MEALS = [
+    {"id": "breakfast", "hour": 8,  "minute": 30, "text": "🍳 <b>Завтракал?</b>\nЗапиши что съел, пока не забыл!"},
+    {"id": "snack1",    "hour": 11, "minute": 30, "text": "🍎 <b>Время перекуса</b>\nЗапиши если что-то съел!"},
+    {"id": "lunch",     "hour": 13, "minute": 30, "text": "🍱 <b>Обедал?</b>\nЗафиксируй обед — это важно для калорий!"},
+    {"id": "snack2",    "hour": 16, "minute": 30, "text": "🥜 <b>Полдник</b>\nПерекусил? Запиши!"},
+    {"id": "dinner",    "hour": 19, "minute": 30, "text": "🍽 <b>Ужин</b>\nЗапиши ужин, чтобы закрыть день!"},
+]
 
-async def _send_meal_reminder(user_id: int):
+_MEAL_TEXTS = {m["id"]: m["text"] for m in MEALS}
+
+
+async def _send_meal_reminder(user_id: int, text: str):
     if _bot is None:
         return
+    # Не беспокоим, если человек уже что-то записал за последние 30 минут
+    if await was_food_logged_recently(user_id, minutes=30):
+        return
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="➕ Записать", callback_data="log_food")
+        InlineKeyboardButton(text="➕ Записать еду", callback_data="log_food")
     ]])
     try:
-        await _bot.send_message(
-            user_id,
-            "🍽 <b>Пора перекусить?</b>\nЗапиши следующий приём пищи, пока не забыл!",
-            parse_mode="HTML",
-            reply_markup=kb,
-        )
+        await _bot.send_message(user_id, text, parse_mode="HTML", reply_markup=kb)
     except Exception as e:
         logger.warning("Не удалось отправить напоминание %s: %s", user_id, e)
 
 
-def schedule_next_meal_reminder(user_id: int, delay_minutes: int = 120):
-    """Ставит разовое напоминание через delay_minutes минут. Перезаписывает предыдущее."""
+def setup_daily_reminders(user_id: int, user_meals: list[dict] = None):
+    """Регистрирует cron-напоминания для пользователя по его настройкам из БД."""
     if _scheduler is None:
         return
-    job_id = f"meal_{user_id}"
-    run_at = datetime.now() + timedelta(minutes=delay_minutes)
-    _scheduler.add_job(
-        _send_meal_reminder,
-        "date",
-        run_date=run_at,
-        args=[user_id],
-        id=job_id,
-        replace_existing=True,
-    )
-    logger.info("Напоминание для %s через %d мин", user_id, delay_minutes)
+    meals = user_meals if user_meals is not None else [
+        {"meal_id": m["id"], "enabled": 1, "hour": m["hour"], "minute": m["minute"]}
+        for m in MEALS
+    ]
+    for meal in meals:
+        meal_id = meal["meal_id"]
+        job_id = f"meal_{user_id}_{meal_id}"
+        if not meal.get("enabled", 1):
+            if _scheduler.get_job(job_id):
+                _scheduler.remove_job(job_id)
+            continue
+        _scheduler.add_job(
+            _send_meal_reminder,
+            "cron",
+            hour=meal["hour"],
+            minute=meal["minute"],
+            args=[user_id, _MEAL_TEXTS.get(meal_id, "🍽 Время записать приём пищи!")],
+            id=job_id,
+            replace_existing=True,
+            timezone="Asia/Krasnoyarsk",
+        )
+    logger.info("Напоминания настроены для user_id=%s", user_id)
+
+
+def remove_daily_reminders(user_id: int):
+    """Удаляет все напоминания пользователя."""
+    if _scheduler is None:
+        return
+    for meal in MEALS:
+        job_id = f"meal_{user_id}_{meal['id']}"
+        if _scheduler.get_job(job_id):
+            _scheduler.remove_job(job_id)
+
+
+async def _send_weekly_report():
+    from database.db import (get_all_onboarded_users, get_user,
+                              get_week_workouts, get_week_nutrition_avg, get_week_exercise_weights)
+    if _bot is None:
+        return
+
+    today = date.today()
+    # Воскресенье — отчёт за прошедшие 7 дней (пн–вс)
+    week_end = today.isoformat()
+    week_start = (today - timedelta(days=6)).isoformat()
+    prev_start = (today - timedelta(days=13)).isoformat()
+    prev_end   = (today - timedelta(days=7)).isoformat()
+
+    for user_id in await get_all_onboarded_users():
+        try:
+            user = await get_user(user_id)
+            workouts = await get_week_workouts(user_id, week_start, week_end)
+            nutrition = await get_week_nutrition_avg(user_id, week_start, week_end)
+            cur_weights = await get_week_exercise_weights(user_id, week_start, week_end)
+            prev_weights = await get_week_exercise_weights(user_id, prev_start, prev_end)
+
+            lines = [f"📋 <b>Недельный отчёт</b> — {week_start[5:].replace('-', '.')}–{week_end[5:].replace('-', '.')}\n"]
+
+            # Тренировки
+            tonnage = sum(w["total_tonnage"] for w in workouts)
+            prev_workouts = await get_week_workouts(user_id, prev_start, prev_end)
+            prev_tonnage = sum(w["total_tonnage"] for w in prev_workouts)
+            diff_t = tonnage - prev_tonnage
+            sign = "+" if diff_t >= 0 else ""
+            lines.append(
+                f"💪 <b>Тренировок:</b> {len(workouts)}\n"
+                f"🏋️ Тоннаж: <b>{tonnage:,.0f} кг</b>"
+                + (f" ({sign}{diff_t:.0f} кг vs пред. неделя)" if prev_tonnage > 0 else "")
+            )
+
+            # Прогресс весов
+            gains = []
+            for ex, w_new in cur_weights.items():
+                w_old = prev_weights.get(ex)
+                if w_old and w_new > w_old:
+                    gains.append(f"  ↗ {ex}: {w_old:.0f} → {w_new:.0f} кг")
+            if gains:
+                lines.append("\n📈 <b>Прогресс весов:</b>\n" + "\n".join(gains))
+
+            # Питание
+            if nutrition["days_tracked"] > 0:
+                cal_pct = int(nutrition["avg_calories"] / user["goal_calories"] * 100) if user["goal_calories"] else 0
+                prot_pct = int(nutrition["avg_protein"] / user["goal_protein"] * 100) if user["goal_protein"] else 0
+                lines.append(
+                    f"\n🍽 <b>Питание</b> (ср. за {nutrition['days_tracked']} дн.):\n"
+                    f"🔥 {nutrition['avg_calories']:.0f} / {user['goal_calories']} ккал ({cal_pct}%)\n"
+                    f"🥩 Белок: {nutrition['avg_protein']:.0f} / {user['goal_protein']}г ({prot_pct}%)\n"
+                    f"🌾 Углеводы: {nutrition['avg_carbs']:.0f} / {user['goal_carbs']}г\n"
+                    f"🫒 Жиры: {nutrition['avg_fat']:.0f} / {user['goal_fat']}г"
+                )
+
+            if len(workouts) == 0 and nutrition["days_tracked"] == 0:
+                continue  # нечего отправлять
+
+            await _bot.send_message(user_id, "\n".join(lines), parse_mode="HTML")
+        except Exception as e:
+            logger.warning("Weekly report failed for user %s: %s", user_id, e)
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     global _scheduler, _bot
     _bot = bot
     _scheduler = AsyncIOScheduler(timezone="Asia/Krasnoyarsk")
+    _scheduler.add_job(
+        _send_weekly_report,
+        "cron",
+        day_of_week="sun",
+        hour=20,
+        minute=0,
+        id="weekly_report",
+        replace_existing=True,
+    )
     return _scheduler

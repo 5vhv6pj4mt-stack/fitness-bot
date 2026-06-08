@@ -3,6 +3,7 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKey
 from aiogram.fsm.context import FSMContext
 
 from database.db import create_user, update_user, get_user, save_user_program
+from services.scheduler import setup_daily_reminders
 from services.ai_service import generate_program
 from states.states import Onboarding
 
@@ -236,6 +237,7 @@ async def ob_injuries(message: Message, state: FSMContext):
                 current_day_index=preset["day_index"],
                 onboarded=1,
             )
+            setup_daily_reminders(message.from_user.id)
 
             await message.answer(
                 f"✅ <b>Программа загружена!</b>\n\n"
@@ -277,6 +279,7 @@ async def ob_injuries(message: Message, state: FSMContext):
                 current_day_index=0,
                 onboarded=1,
             )
+            setup_daily_reminders(message.from_user.id)
 
             await message.answer(
                 f"🎉 <b>Программа готова!</b>\n\n"

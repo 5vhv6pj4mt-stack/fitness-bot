@@ -23,3 +23,19 @@ class Onboarding(StatesGroup):
     days = State()
     equipment = State()
     injuries = State()
+
+
+class EditFood(StatesGroup):
+    editing_entry = State()   # ждём новый текст/голос для замены записи питания
+
+
+class EditWorkout(StatesGroup):
+    editing_set = State()     # ждём новые значения подхода (формат: "85x6 RPE8")
+
+
+class ReminderSettings(StatesGroup):
+    waiting_time = State()    # ждём ввод времени ЧЧ:ММ для конкретного приёма
+
+
+class FoodTemplate(StatesGroup):
+    waiting_name = State()    # ждём название шаблона

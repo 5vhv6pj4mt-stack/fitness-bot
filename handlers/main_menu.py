@@ -1,6 +1,6 @@
 from datetime import date as dt_date
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 
@@ -97,14 +97,12 @@ async def go_main(message: Message, state: FSMContext):
 
 @router.message(Command("workout"))
 async def cmd_workout(message: Message, state: FSMContext):
-    message.text = "💪 Тренировка"
     from handlers.workout import workout_section
     await workout_section(message, state)
 
 
 @router.message(Command("food"))
 async def cmd_food(message: Message, state: FSMContext):
-    message.text = "➕ Записать еду"
     from handlers.nutrition import ask_food
     await ask_food(message, state)
 
@@ -125,3 +123,5 @@ async def cmd_stats(message: Message):
 async def cmd_settings(message: Message):
     from handlers.settings import settings_menu
     await settings_menu(message)
+
+

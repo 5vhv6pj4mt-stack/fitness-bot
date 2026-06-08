@@ -8,11 +8,14 @@ from aiogram.fsm.context import FSMContext
 from database.db import (get_user, update_user, create_workout, save_set,
                           finish_workout, get_last_workout_by_day, get_workout_sets,
                           get_user_program, get_user_day_types, get_user_week_types,
-                          update_workout_progress, get_active_workout, discard_all_active_workouts)
-from keyboards.keyboards import main_menu, workout_menu, workout_logging_keyboard, finish_keyboard, rest_timer_keyboard
+                          update_workout_progress, get_active_workout, discard_all_active_workouts,
+                          update_exercise_weight)
+from keyboards.keyboards import (main_menu, workout_menu, workout_logging_keyboard,
+                                  finish_keyboard, rest_timer_keyboard, rest_input_keyboard,
+                                  set_input_keyboard, next_set_keyboard)
 from services.ai_service import analyze_workout, get_exercise_technique, get_exercise_gif
 from states.states import WorkoutLogging
-from handlers.nav import send_nav
+from handlers.nav import send_nav, track_msg
 
 router = Router()
 
@@ -85,7 +88,10 @@ async def _rest_timer_task(bot: Bot, chat_id: int, seconds: int):
         except Exception:
             pass
         try:
-            await bot.send_message(chat_id, "⏰ <b>Время вышло! Следующий подход 💪</b>", parse_mode="HTML")
+            await bot.send_message(
+                chat_id, "⏰ <b>Время вышло! Следующий подход 💪</b>",
+                parse_mode="HTML", reply_markup=next_set_keyboard()
+            )
         except Exception:
             pass
 
@@ -119,6 +125,167 @@ def format_plan(exercises: list[dict], week_type: str) -> str:
         w = f"{ex['weight']}кг" if ex['weight'] > 0 else "свой вес"
         lines.append(f"{i}. <b>{ex['exercise']}</b> — {ex['sets']}×{ex['reps_range']} @ {w}, RPE {ex['rpe_range']} | отдых {ex['rest']}")
     return "\n".join(lines)
+
+
+def _fmt_weight(w: float) -> str:
+    return str(int(w)) if w == int(w) else str(w)
+
+
+PROGRESSION_STEP = 2.5
+
+
+def _parse_reps_default(reps_range: str) -> int:
+    """'12-15' → 12, '5' → 5, '30-60 секунд' → 30"""
+    nums = re.findall(r'\d+', reps_range)
+    return int(nums[0]) if nums else 8
+
+
+def _parse_rpe_default(rpe_range: str) -> float:
+    """'7-9' → 8.0, '8' → 8.0"""
+    nums = re.findall(r'\d+(?:\.\d+)?', rpe_range)
+    if not nums:
+        return 8.0
+    if len(nums) == 1:
+        return float(nums[0])
+    mid = (float(nums[0]) + float(nums[-1])) / 2
+    return round(mid * 2) / 2  # округляем до 0.5
+
+
+def _parse_rest_seconds(rest_str: str) -> int:
+    """Парсит строку отдыха в секунды.
+    Форматы: '2м30с', '2м', '90с', '2.5 мин', '60-90 сек', '2-3 мин', '1:30'
+    При диапазоне берём верхнюю границу (лучше больше отдохнуть).
+    """
+    s = rest_str.lower().strip()
+
+    # 'XмYс' / 'Xм Yс' — например '2м30с'
+    m = re.match(r'(\d+)\s*м\s*(\d+)\s*с', s)
+    if m:
+        return int(m.group(1)) * 60 + int(m.group(2))
+
+    # 'X:Y' — например '2:30'
+    m = re.match(r'(\d+):(\d{2})', s)
+    if m:
+        return int(m.group(1)) * 60 + int(m.group(2))
+
+    # Минуты: 'Xм', 'X мин', 'X-Y мин'
+    if re.search(r'м(?:ин)?', s):
+        nums = re.findall(r'\d+(?:\.\d+)?', s)
+        if not nums:
+            return 90
+        vals = [round(float(n) * 60) for n in nums]
+        return max(30, round(max(vals) / 30) * 30)
+
+    # Секунды: 'Xс', 'X сек', 'X-Y сек', просто число
+    nums = re.findall(r'\d+', s)
+    if not nums:
+        return 90
+    vals = [int(n) for n in nums]
+    return max(30, round(max(vals) / 30) * 30)
+
+
+def _init_set_defaults(ex: dict) -> tuple[float, int, float]:
+    """Возвращает (weight, reps, rpe) по умолчанию из плана."""
+    return ex["weight"], _parse_reps_default(ex["reps_range"]), _parse_rpe_default(ex["rpe_range"])
+
+
+def _build_set_prompt(data: dict) -> tuple[str, "InlineKeyboardMarkup"]:
+    """Строит текст и клавиатуру для ввода текущего подхода."""
+    exercises = data["exercises"]
+    ex_index = data["ex_index"]
+    set_index = data["set_index"]
+    all_sets = data["all_sets"]
+    cur_w = data.get("current_weight", 0.0)
+    cur_r = data.get("current_reps", 8)
+    cur_rpe = data.get("current_rpe", 8.0)
+
+    ex = exercises[ex_index]
+    table = format_exercise_table(ex, all_sets, set_index)
+    text = (
+        f"<b>{ex_index + 1}. {ex['exercise']}</b>  ·  RPE {ex['rpe_range']}  ·  отдых {ex['rest']}\n\n"
+        + table
+        + f"\n\n<b>Подход {set_index + 1}/{ex['sets']}</b>"
+    )
+    show_warmup = set_index == 0 and ex["weight"] > 0
+    is_last_set = set_index == ex["sets"] - 1
+    cur_rest = 0 if is_last_set else data.get("current_rest", 0)
+    kb = set_input_keyboard(cur_w, cur_r, cur_rpe, ex["weight"], cur_rest, show_warmup)
+    return text, kb
+
+_WARMUP_SCHEMES = {
+    "strength": [(0.40, 8), (0.60, 5), (0.75, 3), (0.85, 1)],
+    "volume":   [(0.50, 10), (0.70, 6), (0.85, 3)],
+    "deload":   [(0.50, 10), (0.65, 8)],
+}
+
+
+def format_warmup(exercise: str, work_weight: float, week_type: str) -> str:
+    scheme = _WARMUP_SCHEMES.get(week_type, _WARMUP_SCHEMES["volume"])
+    lines = [f"🔥 <b>Разминка — {exercise}</b>\n<i>Рабочий вес: {_fmt_weight(work_weight)}кг</i>\n"]
+    for pct, reps in scheme:
+        raw = work_weight * pct
+        rounded = round(raw / 2.5) * 2.5  # до ближайших 2.5кг
+        bar = "░" * int(pct * 10)
+        lines.append(f"  {int(pct*100)}%  →  <b>{_fmt_weight(rounded)}кг × {reps}</b>  <code>{bar}</code>")
+    lines.append("\n▶️ После разминки вводи рабочие подходы как обычно")
+    return "\n".join(lines)
+
+def _calculate_progression(all_sets: list[dict], exercises: list[dict]) -> list[dict]:
+    """RPE avg ≤ 8.0 → +2.5кг, 8.0–9.0 → держим, >9.0 → -2.5кг. Свой вес пропускаем."""
+    result = []
+    for ex in exercises:
+        if ex["weight"] <= 0:
+            continue
+        ex_sets = [s for s in all_sets if s["exercise"] == ex["exercise"]]
+        if not ex_sets:
+            continue
+        avg_rpe = sum(s["rpe"] for s in ex_sets) / len(ex_sets)
+        old_w = ex["weight"]
+        if avg_rpe <= 8.0:
+            new_w = old_w + PROGRESSION_STEP
+            icon = "↗"
+        elif avg_rpe <= 9.0:
+            new_w = old_w
+            icon = "—"
+        else:
+            new_w = max(old_w - PROGRESSION_STEP, PROGRESSION_STEP)
+            icon = "↘"
+        result.append({
+            "exercise": ex["exercise"],
+            "old_weight": old_w,
+            "new_weight": new_w,
+            "avg_rpe": avg_rpe,
+            "icon": icon,
+        })
+    return result
+
+
+def format_exercise_table(ex: dict, all_sets: list, current_set_idx: int) -> str:
+    """Таблица подходов: план + выполненные + текущий."""
+    logged = [s for s in all_sets if s['exercise'] == ex['exercise']]
+
+    ew = ex['weight']
+    w_str = f"{_fmt_weight(ew)}кг" if ew > 0 else "св.в."
+    plan_tmpl = f"{w_str}×{ex['reps_range']}"
+
+    rows = []
+    for i in range(ex['sets']):
+        marker = ">" if i == current_set_idx else " "
+        plan = f"{plan_tmpl:<13}"
+
+        if i < len(logged):
+            s = logged[i]
+            aw_s = _fmt_weight(s['actual_weight'])
+            rpe_s = _fmt_weight(s['rpe'])
+            fact = f"[+] {aw_s}x{s['reps']} R{rpe_s}"
+        elif i == current_set_idx:
+            fact = "[>] ввести"
+        else:
+            fact = "[ ] ..."
+
+        rows.append(f"{marker}{i + 1}. {plan} {fact}")
+
+    return "<code>" + "\n".join(rows) + "</code>"
 
 
 async def get_current_day(user: dict) -> tuple[str, str, list[dict]]:
@@ -177,11 +344,19 @@ async def show_plan(message: Message):
     week_label = WEEK_TYPES.get(week_type, week_type.capitalize())
 
     if not exercises:
-        await send_nav(message, "Программа не найдена. Пройди настройку /start")
+        await send_nav(message, "Программа не найдена. Пройди настройку /start", reply_markup=workout_menu(day_label, week_label))
         return
 
     text = f"📋 <b>{day_label} · {week_label}</b>\n\n{format_plan(exercises, week_type)}"
-    await send_nav(message, text)
+    await send_nav(message, text, reply_markup=workout_menu(day_label, week_label))
+
+
+@router.message(WorkoutLogging.logging_sets, F.text.startswith("▶️ Начать:"))
+async def guard_restart_during_workout(message: Message):
+    """Защита от случайного перезапуска тренировки через кнопку меню."""
+    await message.answer(
+        "⚠️ Ты уже в тренировке! Введи результат подхода или нажми 🏁 Завершить."
+    )
 
 
 @router.message(F.text.startswith("▶️ Начать:"))
@@ -199,6 +374,10 @@ async def start_workout(message: Message, state: FSMContext):
     await discard_all_active_workouts(message.from_user.id)
     workout_id = await create_workout(message.from_user.id, today(), day_type, week_num, week_type)
 
+    ex = exercises[0]
+    cur_w, cur_r, cur_rpe = _init_set_defaults(ex)
+
+    cur_rest = _parse_rest_seconds(ex["rest"]) if ex["sets"] > 1 else 0
     await state.set_state(WorkoutLogging.logging_sets)
     await state.update_data(
         workout_id=workout_id,
@@ -208,20 +387,22 @@ async def start_workout(message: Message, state: FSMContext):
         ex_index=0,
         set_index=0,
         all_sets=[],
+        current_weight=cur_w,
+        current_reps=cur_r,
+        current_rpe=cur_rpe,
+        current_rest=cur_rest,
     )
 
-    ex = exercises[0]
-    w = f"{ex['weight']}кг" if ex['weight'] > 0 else "свой вес"
-    sent = await message.answer(
+    table = format_exercise_table(ex, [], 0)
+    text = (
         f"🏋️ <b>{day_label} · {week_label} начата!</b>\n\n"
-        f"<b>1. {ex['exercise']}</b>\n"
-        f"Plan: {ex['sets']}×{ex['reps_range']} @ {w}, RPE {ex['rpe_range']}\n"
-        f"Отдых: {ex['rest']}\n\n"
-        f"<b>Подход 1/{ex['sets']}:</b>\n"
-        f"Введи результат в формате: <code>вес × повторы RPE</code>\n"
-        f"Пример: <code>50 × 8 RPE8</code> или <code>50x8 8</code>",
-        parse_mode="HTML",
-        reply_markup=workout_logging_keyboard(ex['exercise'], 1, ex['sets'], ex['weight'], ex['reps_range'])
+        f"<b>1. {ex['exercise']}</b>  ·  RPE {ex['rpe_range']}  ·  отдых {ex['rest']}\n\n"
+        + table
+        + f"\n\n<b>Подход 1/{ex['sets']}</b>"
+    )
+    sent = await message.answer(
+        text, parse_mode="HTML",
+        reply_markup=set_input_keyboard(cur_w, cur_r, cur_rpe, ex["weight"], cur_rest, ex["weight"] > 0),
     )
     await state.update_data(prompt_msg_id=sent.message_id)
 
@@ -246,11 +427,90 @@ def parse_set_input(text: str):
     return weight, reps, rpe, notes
 
 
+async def _advance_after_set(
+    message: "Message", state: "FSMContext",
+    weight: float, reps: int, rpe: float, notes: "str | None",
+):
+    """Сохраняет подход и показывает следующий промпт (отдых или новое упражнение)."""
+    data = await state.get_data()
+    exercises = data["exercises"]
+    ex_index = data["ex_index"]
+    set_index = data["set_index"]
+    all_sets = data["all_sets"]
+    workout_id = data["workout_id"]
+    ex = exercises[ex_index]
+
+    await save_set(workout_id, ex["exercise"], set_index + 1, ex["weight"], weight, reps, rpe, notes)
+    all_sets.append({"exercise": ex["exercise"], "actual_weight": weight, "reps": reps, "rpe": rpe})
+
+    next_set = set_index + 1
+    next_ex = ex_index
+    if next_set >= ex["sets"]:
+        next_ex += 1
+        next_set = 0
+
+    await state.update_data(ex_index=next_ex, set_index=next_set, all_sets=all_sets)
+    await update_workout_progress(workout_id, next_ex, next_set)
+
+    # Удаляем старые служебные сообщения
+    if data.get("prompt_msg_id"):
+        await _try_delete(message.bot, message.chat.id, data["prompt_msg_id"])
+    if data.get("rest_info_msg_id"):
+        await _try_delete(message.bot, message.chat.id, data["rest_info_msg_id"])
+
+    if next_ex >= len(exercises):
+        await finish_workout_flow(message, state)
+        return
+
+    next_ex_obj = exercises[next_ex]
+    is_new_ex = next_set == 0
+    note_str = f"\n📝 <i>{notes}</i>" if notes else ""
+
+    if is_new_ex:
+        nw, nr, nrpe = _init_set_defaults(next_ex_obj)
+        # Отдых берём от завершённого упражнения (пользователь мог скорректировать)
+        rest_secs = data.get("current_rest") or _parse_rest_seconds(ex["rest"])
+        # Для следующего упражнения сбрасываем current_rest по его плану
+        next_rest = _parse_rest_seconds(next_ex_obj["rest"])
+        await state.update_data(current_weight=nw, current_reps=nr, current_rpe=nrpe,
+                                 current_rest=next_rest, rest_info_msg_id=None)
+        text = (
+            f"✅ <b>{ex['exercise']}</b> — готово!{note_str}"
+        )
+        sent = await message.answer(text, parse_mode="HTML")
+        task = asyncio.create_task(
+            _rest_timer_task(message.bot, message.chat.id, rest_secs)
+        )
+        _rest_timers[message.chat.id] = task
+    else:
+        nw = weight
+        nr = _parse_reps_default(next_ex_obj["reps_range"])
+        nrpe = _parse_rpe_default(next_ex_obj["rpe_range"])
+        rest_secs = data.get("current_rest") or _parse_rest_seconds(ex["rest"])
+        await state.update_data(current_weight=nw, current_reps=nr, current_rpe=nrpe,
+                                 current_rest=rest_secs, rest_info_msg_id=None)
+        table = format_exercise_table(ex, all_sets, next_set)
+        text = (
+            f"✅ {_fmt_weight(weight)}кг × {reps} повт. RPE {rpe}{note_str}\n\n"
+            + table
+            + f"\n\n<b>{ex['exercise']} — подход {next_set + 1}/{ex['sets']}</b>"
+        )
+        sent = await message.answer(text, parse_mode="HTML")
+        task = asyncio.create_task(
+            _rest_timer_task(message.bot, message.chat.id, rest_secs)
+        )
+        _rest_timers[message.chat.id] = task
+
+    await state.update_data(prompt_msg_id=sent.message_id)
+
+
 _NAV_PASSTHROUGH = frozenset({
     "🍽 Питание", "📊 Статистика", "⚙️ Настройки",
     "➕ Записать приём пищи", "➕ Записать еду",
-    "📋 Итог за сегодня", "💡 Совет по питанию",
+    "💡 Совет по питанию",
     "📋 План тренировки", "📈 Прогресс",
+    "🍴 Что съел сегодня", "📋 Сводка на сегодня", "📌 Шаблоны",
+    "✏️ Изменить запись питания", "✏️ Изменить тренировку",
 })
 
 
@@ -261,97 +521,115 @@ async def abort_workout_on_nav(message: Message, state: FSMContext):
     await message.answer("Тренировка прервана.", reply_markup=main_menu())
 
 
+@router.callback_query(WorkoutLogging.logging_sets, F.data == "workout_to_main")
+async def abort_workout_to_main(callback: CallbackQuery, state: FSMContext):
+    _cancel_rest_timer(callback.message.chat.id)
+    await state.clear()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer("Тренировка прервана.", reply_markup=main_menu())
+    await callback.answer()
+
+
 @router.message(WorkoutLogging.logging_sets, ~F.text.in_(_NAV_PASSTHROUGH), ~F.text.startswith("/"))
 async def log_set(message: Message, state: FSMContext):
     if not message.text:
         return
-
-    # Отменяем предыдущий таймер если пользователь ввёл подход раньше
     _cancel_rest_timer(message.chat.id)
-
-    # Удаляем сообщение пользователя с вводом подхода
     await _try_delete(message.bot, message.chat.id, message.message_id)
 
     data = await state.get_data()
-    exercises = data["exercises"]
-    ex_index = data["ex_index"]
-    set_index = data["set_index"]
-    all_sets = data["all_sets"]
-    workout_id = data["workout_id"]
-
-    ex = exercises[ex_index]
+    ex = data["exercises"][data["ex_index"]]
     parsed = parse_set_input(message.text)
-
     if not parsed:
-        await message.answer(
-            "❌ Не понял формат. Напиши например: <code>50 8 7</code>",
-            parse_mode="HTML"
-        )
+        await message.answer("❌ Не понял формат. Напиши: <code>50 8 7</code>", parse_mode="HTML")
         return
 
     weight, reps, rpe, notes = parsed
     if rpe is None:
         rpe = 8.0
+    await _advance_after_set(message, state, weight, reps, rpe, notes)
 
-    await save_set(workout_id, ex["exercise"], set_index + 1, ex["weight"], weight, reps, rpe, notes)
-    all_sets.append({"exercise": ex["exercise"], "actual_weight": weight, "reps": reps, "rpe": rpe})
 
-    next_set = set_index + 1
-    next_ex = ex_index
+@router.callback_query(F.data == "noop")
+async def noop_cb(callback: CallbackQuery):
+    await callback.answer()
 
-    if next_set >= ex["sets"]:
-        next_ex += 1
-        next_set = 0
 
-    await state.update_data(ex_index=next_ex, set_index=next_set, all_sets=all_sets)
-    # Сохраняем прогресс в БД — чтобы можно было продолжить после выхода
-    await update_workout_progress(workout_id, next_ex, next_set)
+@router.callback_query(WorkoutLogging.logging_sets, F.data.in_({"sw:+", "sw:-"}))
+async def adjust_weight(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    cur_w = max(0.0, data.get("current_weight", 0.0) + (2.5 if callback.data == "sw:+" else -2.5))
+    await state.update_data(current_weight=cur_w)
+    data["current_weight"] = cur_w
+    text, kb = _build_set_prompt(data)
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        pass
+    await callback.answer()
 
-    # Тренировка завершена
-    if next_ex >= len(exercises):
-        await finish_workout_flow(message, state)
-        return
 
-    next_exercise = exercises[next_ex]
-    is_new_ex = next_set == 0
-    w = f"{next_exercise['weight']}кг" if next_exercise['weight'] > 0 else "свой вес"
+@router.callback_query(WorkoutLogging.logging_sets, F.data.in_({"sr:+", "sr:-"}))
+async def adjust_reps(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    cur_r = max(1, data.get("current_reps", 8) + (1 if callback.data == "sr:+" else -1))
+    await state.update_data(current_reps=cur_r)
+    data["current_reps"] = cur_r
+    text, kb = _build_set_prompt(data)
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        pass
+    await callback.answer()
 
-    note_str = f"\n📝 <i>{notes}</i>" if notes else ""
 
-    if is_new_ex:
-        set_info = (
-            f"✅ <b>{ex['exercise']}</b> — готово!{note_str}\n\n"
-            f"<b>{next_ex + 1}. {next_exercise['exercise']}</b>\n"
-            f"План: {next_exercise['sets']}×{next_exercise['reps_range']} @ {w}, RPE {next_exercise['rpe_range']}\n\n"
-            f"<b>Подход 1/{next_exercise['sets']}</b> — введи результат:"
-        )
-    else:
-        set_info = (
-            f"✅ {weight}кг × {reps} повт. RPE {rpe}{note_str}\n\n"
-            f"<b>{ex['exercise']} — подход {next_set + 1}/{ex['sets']}</b> — введи результат:"
-        )
+@router.callback_query(WorkoutLogging.logging_sets, F.data.startswith("rpe:"))
+async def select_rpe(callback: CallbackQuery, state: FSMContext):
+    rpe = float(callback.data.split(":")[1])
+    await state.update_data(current_rpe=rpe)
+    data = await state.get_data()
+    text, kb = _build_set_prompt(data)
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        pass
+    await callback.answer()
 
-    # Удаляем предыдущий промпт и инфо-сообщение об отдыхе
-    if data.get("prompt_msg_id"):
-        await _try_delete(message.bot, message.chat.id, data["prompt_msg_id"])
-    if data.get("rest_info_msg_id"):
-        await _try_delete(message.bot, message.chat.id, data["rest_info_msg_id"])
 
-    if is_new_ex:
-        # Новое упражнение — таймер не нужен, показываем skip/finish
-        sent = await message.answer(
-            set_info,
-            parse_mode="HTML",
-            reply_markup=workout_logging_keyboard(
-                next_exercise['exercise'], 1, next_exercise['sets'],
-                next_exercise['weight'], next_exercise['reps_range']
-            )
-        )
-    else:
-        # Следующий подход того же упражнения — показываем таймер отдыха
-        sent = await message.answer(set_info, parse_mode="HTML", reply_markup=rest_timer_keyboard())
+@router.callback_query(WorkoutLogging.logging_sets, F.data == "confirm_set")
+async def confirm_set(callback: CallbackQuery, state: FSMContext):
+    _cancel_rest_timer(callback.message.chat.id)
+    data = await state.get_data()
+    weight = data.get("current_weight", 0.0)
+    reps = data.get("current_reps", 8)
+    rpe = data.get("current_rpe", 8.0)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
+    await _advance_after_set(callback.message, state, weight, reps, rpe, None)
 
-    await state.update_data(prompt_msg_id=sent.message_id, rest_info_msg_id=None)
+
+@router.callback_query(WorkoutLogging.logging_sets, F.data == "next_set")
+async def next_set_cb(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_reply_markup(reply_markup=None)
+    data = await state.get_data()
+    text, kb = _build_set_prompt(data)
+    sent = await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await state.update_data(prompt_msg_id=sent.message_id)
+    await callback.answer()
+
+
+@router.callback_query(WorkoutLogging.logging_sets, F.data.in_({"rest_adj:+", "rest_adj:-"}))
+async def adjust_rest(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    cur = max(30, data.get("current_rest", 90) + (30 if callback.data == "rest_adj:+" else -30))
+    await state.update_data(current_rest=cur)
+    data["current_rest"] = cur
+    text, kb = _build_set_prompt(data)
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        pass
+    await callback.answer()
 
 
 @router.callback_query(WorkoutLogging.logging_sets, F.data.startswith("rest:"))
@@ -360,6 +638,10 @@ async def handle_rest_timer(callback: CallbackQuery, state: FSMContext):
 
     if seconds == 0:
         await callback.message.edit_reply_markup(reply_markup=None)
+        data = await state.get_data()
+        text, kb = _build_set_prompt(data)
+        sent = await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+        await state.update_data(prompt_msg_id=sent.message_id)
         await callback.answer("Таймер пропущен")
         return
 
@@ -378,10 +660,13 @@ async def handle_rest_timer(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(WorkoutLogging.logging_sets, F.data == "rest_ready")
-async def rest_ready(callback: CallbackQuery):
-    """Пользователь нажал 'Готов' до истечения таймера."""
+async def rest_ready(callback: CallbackQuery, state: FSMContext):
     _cancel_rest_timer(callback.message.chat.id)
     await callback.message.edit_text("✅ <b>Подход начат!</b>", parse_mode="HTML", reply_markup=None)
+    data = await state.get_data()
+    text, kb = _build_set_prompt(data)
+    sent = await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await state.update_data(prompt_msg_id=sent.message_id)
     await callback.answer()
 
 
@@ -427,18 +712,28 @@ async def resume_workout(callback: CallbackQuery, state: FSMContext):
     )
 
     ex = exercises[ex_index]
-    w = f"{ex['weight']}кг" if ex['weight'] > 0 else "свой вес"
     day_label = DAY_TYPES.get(day_type, day_type)
+    cur_w, cur_r, cur_rpe = _init_set_defaults(ex)
 
-    await callback.message.edit_text(
+    cur_rest = _parse_rest_seconds(ex["rest"]) if ex["sets"] > 1 else 0
+    await state.update_data(current_weight=cur_w, current_reps=cur_r, current_rpe=cur_rpe,
+                             current_rest=cur_rest)
+
+    table = format_exercise_table(ex, all_sets, set_index)
+    text = (
         f"▶️ <b>Продолжаем {day_label}!</b>\n\n"
-        f"Подходов уже записано: {len(all_sets)}\n\n"
-        f"<b>{ex_index + 1}. {ex['exercise']}</b>\n"
-        f"План: {ex['sets']}×{ex['reps_range']} @ {w}\n\n"
-        f"<b>Подход {set_index + 1}/{ex['sets']}</b> — введи результат:",
-        parse_mode="HTML",
-        reply_markup=workout_logging_keyboard(ex["exercise"], set_index + 1, ex["sets"], ex["weight"], ex["reps_range"])
+        f"<b>{ex_index + 1}. {ex['exercise']}</b>  ·  RPE {ex['rpe_range']}  ·  отдых {ex['rest']}\n\n"
+        + table
+        + f"\n\n<b>Подход {set_index + 1}/{ex['sets']}</b>"
     )
+    show_warmup = set_index == 0 and ex["weight"] > 0
+    is_last_set = set_index == ex["sets"] - 1
+    rest_show = 0 if is_last_set else cur_rest
+    await callback.message.edit_text(
+        text, parse_mode="HTML",
+        reply_markup=set_input_keyboard(cur_w, cur_r, cur_rpe, ex["weight"], rest_show, show_warmup),
+    )
+    await state.update_data(prompt_msg_id=callback.message.message_id)
     await callback.answer()
 
 
@@ -501,38 +796,16 @@ async def handle_technique(callback: CallbackQuery, state: FSMContext):
         await msg.edit_text(f"❌ Не удалось загрузить технику: {e}")
 
 
-@router.callback_query(WorkoutLogging.logging_sets, F.data.startswith("skip_set:"))
-async def skip_set(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(WorkoutLogging.logging_sets, F.data == "show_warmup")
+async def handle_warmup(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    exercises = data["exercises"]
-    ex_index = data["ex_index"]
-    set_index = data["set_index"]
-
-    ex = exercises[ex_index]
-    next_set = set_index + 1
-    next_ex = ex_index
-
-    if next_set >= ex["sets"]:
-        next_ex += 1
-        next_set = 0
-
-    await state.update_data(ex_index=next_ex, set_index=next_set)
-
-    if next_ex >= len(exercises):
-        await finish_workout_flow(callback.message, state)
-        await callback.answer()
-        return
-
-    next_exercise = exercises[next_ex]
-    w = f"{next_exercise['weight']}кг" if next_exercise['weight'] > 0 else "свой вес"
-    await callback.message.answer(
-        f"⏭ Подход пропущен.\n\n"
-        f"<b>{next_ex + 1}. {next_exercise['exercise']}</b>\n"
-        f"Plan: {next_exercise['sets']}×{next_exercise['reps_range']} @ {w}\n\n"
-        f"<b>Подход {next_set + 1}/{next_exercise['sets']}:</b>",
-        parse_mode="HTML"
-    )
+    ex = data["exercises"][data["ex_index"]]
+    week_type = data.get("week_type", "volume")
     await callback.answer()
+    await callback.message.answer(
+        format_warmup(ex["exercise"], ex["weight"], week_type),
+        parse_mode="HTML",
+    )
 
 
 @router.callback_query(WorkoutLogging.logging_sets, F.data == "finish_workout")
@@ -595,7 +868,7 @@ async def finish_workout_flow(message: Message, state: FSMContext):
     next_day_label = DAY_TYPES.get(next_day_types[next_day_index % len(next_day_types)], next_day_types[next_day_index % len(next_day_types)].replace("_", " ").title()) if next_day_types else "—"
     next_week_label = WEEK_TYPES.get(next_week_type, next_week_type.capitalize())
 
-    await message.answer(
+    finish_msg = await message.answer(
         f"🏁 <b>Тренировка завершена!</b>\n\n"
         f"📊 Тоннаж: <b>{tonnage:.0f} кг</b>\n"
         f"💥 Средний RPE: <b>{avg_rpe:.1f}</b>\n"
@@ -604,6 +877,7 @@ async def finish_workout_flow(message: Message, state: FSMContext):
         parse_mode="HTML",
         reply_markup=main_menu()
     )
+    track_msg(message.chat.id, finish_msg.message_id)
 
     # AI анализ
     try:
@@ -621,32 +895,63 @@ async def finish_workout_flow(message: Message, state: FSMContext):
             day_label, week_label,
             all_sets, prev_text, user["weight"]
         )
-        await message.answer(f"🤖 <b>Анализ тренировки:</b>\n\n{analysis}", parse_mode="HTML")
+        analysis_msg = await message.answer(f"🤖 <b>Анализ тренировки:</b>\n\n{analysis}", parse_mode="HTML")
+        track_msg(message.chat.id, analysis_msg.message_id)
     except Exception as e:
         import logging, traceback
         logging.getLogger(__name__).error(f"Ошибка анализа: {traceback.format_exc()}")
-        await message.answer(f"⚠️ Анализ недоступен: {e}")
+        err_msg = await message.answer(f"⚠️ Анализ недоступен: {e}")
+        track_msg(message.chat.id, err_msg.message_id)
 
-    await message.answer(
+    # Прогрессия весов (не применяем на разгрузочной неделе)
+    if week_type != "deload":
+        progression = _calculate_progression(all_sets, data["exercises"])
+        if progression:
+            changed = [p for p in progression if p["new_weight"] != p["old_weight"]]
+            for p in changed:
+                await update_exercise_weight(
+                    message.chat.id, week_type, day_type,
+                    p["exercise"], p["new_weight"]
+                )
+            lines_prog = []
+            for p in progression:
+                w_old = _fmt_weight(p["old_weight"])
+                w_new = _fmt_weight(p["new_weight"])
+                if p["new_weight"] != p["old_weight"]:
+                    lines_prog.append(f"{p['icon']} <b>{p['exercise']}</b>: {w_old} → {w_new}кг (RPE {p['avg_rpe']:.1f})")
+                else:
+                    lines_prog.append(f"{p['icon']} <b>{p['exercise']}</b>: {w_old}кг (RPE {p['avg_rpe']:.1f})")
+            prog_msg = await message.answer(
+                "📈 <b>Прогрессия на следующую тренировку:</b>\n\n" + "\n".join(lines_prog),
+                parse_mode="HTML"
+            )
+            track_msg(message.chat.id, prog_msg.message_id)
+
+    next_msg = await message.answer(
         f"Следующая тренировка: <b>{next_day_label}</b> · {next_week_label}",
         parse_mode="HTML"
     )
+    track_msg(message.chat.id, next_msg.message_id)
 
 
 @router.message(F.text == "📈 Прогресс")
 async def show_progress(message: Message):
     from database.db import get_last_workouts
+    user = await get_user(message.from_user.id)
     workouts = await get_last_workouts(message.from_user.id, 6)
+    day_type, week_type, _ = await get_current_day(user)
+    day_label = DAY_TYPES.get(day_type, day_type.replace("_", " ").title())
+    week_label = WEEK_TYPES.get(week_type, week_type.capitalize())
     if not workouts:
-        await send_nav(message, "Нет данных о тренировках.")
+        await send_nav(message, "Нет данных о тренировках.", reply_markup=workout_menu(day_label, week_label))
         return
 
     lines = ["📈 <b>Последние тренировки:</b>\n"]
     for w in workouts:
-        day_label = DAY_TYPES.get(w["day_type"], w["day_type"])
-        week_label = WEEK_TYPES.get(w["week_type"], w["week_type"])
+        w_day_label = DAY_TYPES.get(w["day_type"], w["day_type"])
+        w_week_label = WEEK_TYPES.get(w["week_type"], w["week_type"])
         lines.append(
-            f"📅 {w['date']} · {day_label} ({week_label})\n"
+            f"📅 {w['date']} · {w_day_label} ({w_week_label})\n"
             f"   🏋️ Тоннаж: {w['total_tonnage']:.0f}кг · RPE: {w['avg_rpe']:.1f}"
         )
-    await send_nav(message, "\n".join(lines))
+    await send_nav(message, "\n".join(lines), reply_markup=workout_menu(day_label, week_label))
