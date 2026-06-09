@@ -83,12 +83,13 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; fon
 .set-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 8px; }
 .set-row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
 
-.rpe-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.rpe-pills { display: flex; gap: 5px; }
 .rpe-pill {
-  flex: 1; min-width: 44px; padding: 10px 6px; border-radius: 10px;
+  flex: 1; padding: 10px 2px; border-radius: 10px;
   background: var(--bg-hover); border: 1.5px solid transparent;
-  font-size: 14px; font-weight: 600; color: var(--hint);
+  font-size: 13px; font-weight: 600; color: var(--hint);
   transition: background 0.12s, color 0.12s, border-color 0.12s;
+  min-height: 44px;
 }
 .rpe-pill.active {
   background: rgba(59,130,246,0.15); border-color: var(--accent); color: var(--accent);
