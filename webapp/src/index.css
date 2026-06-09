@@ -104,8 +104,13 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; fon
   padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 .food-entry:last-child { border-bottom: none; }
-.food-entry-name { font-size: 14px; font-weight: 500; }
+.food-entry-body { flex: 1; min-width: 0; }
+.food-entry-name { font-size: 14px; font-weight: 500; word-break: break-word; }
 .food-entry-kcal { font-size: 13px; color: var(--hint); margin-top: 2px; }
+.food-entry-right {
+  display: flex; flex-direction: column; align-items: flex-end;
+  gap: 4px; margin-left: 8px; flex-shrink: 0;
+}
 .food-entry-time { font-size: 12px; color: var(--hint); white-space: nowrap; }
 
 .food-input-row { display: flex; gap: 8px; margin-top: 8px; }
@@ -132,6 +137,52 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; fon
 .set-history-rpe { font-size: 12px; color: var(--hint); }
 .btn-success { background: #16a34a !important; transition: background 0.15s; }
 
+/* ── Food action sheet ───────────────────────────────────────────────────── */
+.fs-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 200;
+  animation: fade-in 0.2s ease;
+}
+.fs-sheet {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--bg2); border-radius: 20px 20px 0 0;
+  padding: 8px 0 calc(var(--safe-bottom) + 16px); z-index: 201;
+  animation: sheet-up 0.28s cubic-bezier(.32,1,.55,1);
+}
+@keyframes sheet-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; } to { opacity: 1; }
+}
+.fs-handle {
+  width: 36px; height: 4px; background: rgba(255,255,255,0.15);
+  border-radius: 2px; margin: 0 auto 16px;
+}
+.fs-item {
+  display: flex; align-items: center; gap: 14px; padding: 14px 20px;
+  font-size: 15px; color: var(--text); cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.fs-item:active { background: rgba(255,255,255,0.06); }
+.fs-icon { font-size: 18px; width: 24px; text-align: center; }
+.fs-sep { height: 1px; background: rgba(255,255,255,0.07); margin: 0 20px; }
+.fs-danger { color: #f87171; }
+.fs-edit-wrap { padding: 0 20px 12px; }
+.fs-edit-label { font-size: 12px; color: var(--hint); margin-bottom: 6px; }
+.fs-edit-input {
+  width: 100%; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px; padding: 10px 12px; color: var(--text); font-size: 14px;
+  resize: none; font-family: inherit; line-height: 1.4;
+}
+.fs-edit-input:focus { border-color: var(--accent); outline: none; }
+
+.food-entry-more {
+  background: none; color: var(--hint); font-size: 18px; padding: 4px 6px;
+  border-radius: 6px; line-height: 1; margin-left: 4px;
+}
+.food-entry-more:active { background: rgba(255,255,255,0.08); }
+
+/* ── Toast ───────────────────────────────────────────────────────────────── */
 .toast {
   position: fixed; bottom: calc(72px + var(--safe-bottom)); left: 16px; right: 16px;
   padding: 12px 16px; border-radius: 12px; font-size: 14px; font-weight: 500;

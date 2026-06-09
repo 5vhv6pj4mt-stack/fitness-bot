@@ -38,4 +38,6 @@ export const api = {
   finishWorkout: (data) => req('/workout/finish', { method: 'POST', body: JSON.stringify(data) }),
   nutritionToday: () => req('/nutrition'),
   logFood: (text) => req('/nutrition/log', { method: 'POST', body: JSON.stringify({ text }) }),
+  updateFood: (id, text) => req(`/nutrition/${id}`, { method: 'PATCH', body: JSON.stringify({ text }) }),
+  deleteFood: (id) => req(`/nutrition/${id}`, { method: 'DELETE' }),
 }

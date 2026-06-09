@@ -18,6 +18,7 @@ from database.db import (
     get_user_program, get_user_day_types, get_user_week_types,
     get_active_workout, create_workout, save_set, finish_workout,
     update_workout_progress, discard_all_active_workouts,
+    get_food_entry, update_food_entry, delete_food_entry,
 )
 
 app = FastAPI()
@@ -299,3 +300,47 @@ async def log_food_endpoint(body: LogFoodRequest, x_init_data: str = Header(alia
         "carbs": round(result["carbs"], 1),
         "fat": round(result["fat"], 1),
     }
+
+
+class UpdateFoodRequest(BaseModel):
+    text: str
+
+
+@app.patch("/api/nutrition/{entry_id}")
+async def update_food_endpoint(
+    entry_id: int,
+    body: UpdateFoodRequest,
+    x_init_data: str = Header(alias="x-init-data"),
+):
+    user_id = validate_init_data(x_init_data)
+    entry = await get_food_entry(entry_id)
+    if not entry or entry["user_id"] != user_id:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    from services.ai_service import parse_food
+    result = await parse_food(body.text)
+    desc = result.get("description", body.text[:300])
+    await update_food_entry(
+        entry_id, desc,
+        result["calories"], result["protein"], result["carbs"], result["fat"],
+    )
+    return {
+        "id": entry_id,
+        "description": desc,
+        "calories": round(result["calories"]),
+        "protein": round(result["protein"], 1),
+        "carbs": round(result["carbs"], 1),
+        "fat": round(result["fat"], 1),
+    }
+
+
+@app.delete("/api/nutrition/{entry_id}")
+async def delete_food_endpoint(
+    entry_id: int,
+    x_init_data: str = Header(alias="x-init-data"),
+):
+    user_id = validate_init_data(x_init_data)
+    entry = await get_food_entry(entry_id)
+    if not entry or entry["user_id"] != user_id:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    await delete_food_entry(entry_id)
+    return {"ok": True}
