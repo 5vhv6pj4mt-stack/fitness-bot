@@ -156,7 +156,7 @@ async def nutrition_tip(message: Message):
 async def _process_food(message: Message, state: FSMContext, food_text: str,
                         status_msg=None, prefetched_result: dict = None):
     """Общая логика: парсим текст/фото еды и сохраняем."""
-    await state.clear()
+    await state.clear()  # сразу блокируем повторный ввод
     user = await get_user(message.from_user.id)
     utc_offset = user.get("utc_offset", 0)
 
@@ -209,6 +209,7 @@ async def _process_food(message: Message, state: FSMContext, food_text: str,
         track_msg(message.from_user.id, status_msg.message_id)
 
     except Exception as e:
+        await state.set_state(FoodLogging.waiting_input)  # восстанавливаем — можно попробовать снова
         await status_msg.edit_text(f"❌ Не удалось распознать. Попробуй написать подробнее.\n<i>{e}</i>", parse_mode="HTML")
         track_msg(message.from_user.id, status_msg.message_id)
 

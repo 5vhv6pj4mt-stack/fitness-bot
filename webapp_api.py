@@ -2,12 +2,13 @@ import hmac
 import hashlib
 import json
 import logging
+import time
 from datetime import date
 from urllib.parse import unquote, parse_qsl
 
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from config import BOT_TOKEN, DB_PATH
 
@@ -16,7 +17,7 @@ from database.db import (
     get_user, update_user, get_day_nutrition, get_day_food_entries,
     get_last_workouts, get_workout_sets, log_food,
     get_user_program, get_user_day_types, get_user_week_types,
-    get_active_workout, create_workout, save_set, finish_workout,
+    get_active_workout, get_workout_by_id, create_workout, save_set, finish_workout,
     update_workout_progress, discard_all_active_workouts,
     get_food_entry, update_food_entry, delete_food_entry,
 )
@@ -25,9 +26,13 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "https://web.telegram.org",
+        "https://webk.telegram.org",
+        "https://webz.telegram.org",
+    ],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["x-init-data", "content-type"],
 )
 
 DAY_TYPES = {
@@ -66,6 +71,10 @@ def validate_init_data(init_data: str) -> int:
 
     if not hmac.compare_digest(expected, received_hash):
         raise HTTPException(status_code=401, detail="Invalid initData")
+
+    auth_date = int(params.get("auth_date", 0))
+    if abs(int(time.time()) - auth_date) > 86400:
+        raise HTTPException(status_code=401, detail="initData expired")
 
     user_data = json.loads(params.get("user", "{}"))
     user_id = user_data.get("id")
@@ -175,19 +184,22 @@ async def start_workout(x_init_data: str = Header(alias="x-init-data")):
 
 
 class LogSetRequest(BaseModel):
-    workout_id: int
-    exercise: str
-    set_number: int
-    planned_weight: float
-    actual_weight: float
-    reps: int
-    rpe: float
-    notes: str | None = None
+    workout_id: int = Field(gt=0)
+    exercise: str = Field(min_length=1, max_length=100)
+    set_number: int = Field(ge=1)
+    planned_weight: float = Field(ge=0)
+    actual_weight: float = Field(ge=0, le=1000)
+    reps: int = Field(ge=1, le=100)
+    rpe: float = Field(ge=0, le=10)
+    notes: str | None = Field(None, max_length=500)
 
 
 @app.post("/api/workout/log-set")
 async def log_set_endpoint(body: LogSetRequest, x_init_data: str = Header(alias="x-init-data")):
-    validate_init_data(x_init_data)
+    user_id = validate_init_data(x_init_data)
+    workout = await get_workout_by_id(body.workout_id)
+    if not workout or workout["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     await save_set(
         body.workout_id, body.exercise, body.set_number,
         body.planned_weight, body.actual_weight, body.reps, body.rpe, body.notes
@@ -196,11 +208,18 @@ async def log_set_endpoint(body: LogSetRequest, x_init_data: str = Header(alias=
     return {"ok": True}
 
 
+class SetData(BaseModel):
+    actual_weight: float = Field(ge=0, le=1000)
+    reps: int = Field(ge=1, le=100)
+    rpe: float = Field(ge=0, le=10)
+    exercise: str = Field(default="", max_length=100)
+
+
 class FinishWorkoutRequest(BaseModel):
-    workout_id: int
-    sets: list[dict]
-    day_type: str
-    week_type: str
+    workout_id: int = Field(gt=0)
+    sets: list[SetData] = Field(min_length=0, max_length=200)
+    day_type: str = Field(max_length=50)
+    week_type: str = Field(max_length=50)
 
 
 @app.post("/api/workout/finish")
@@ -209,12 +228,15 @@ async def finish_workout_endpoint(
     x_init_data: str = Header(alias="x-init-data"),
 ):
     user_id = validate_init_data(x_init_data)
+    workout = await get_workout_by_id(body.workout_id)
+    if not workout or workout["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     user = await get_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    tonnage = sum(s["actual_weight"] * s["reps"] for s in body.sets)
-    avg_rpe = sum(s["rpe"] for s in body.sets) / len(body.sets) if body.sets else 0
+    tonnage = sum(s.actual_weight * s.reps for s in body.sets)
+    avg_rpe = sum(s.rpe for s in body.sets) / len(body.sets) if body.sets else 0
     await finish_workout(body.workout_id, tonnage, avg_rpe)
 
     # Продвигаем программу

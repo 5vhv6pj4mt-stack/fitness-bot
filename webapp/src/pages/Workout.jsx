@@ -70,10 +70,12 @@ function RestTimer({ onDone }) {
 }
 
 // ── Set input form ────────────────────────────────────────────────────────────
+const RPE_PILLS = [6.5, 7, 7.5, 8, 8.5, 9, 9.5]
+
 function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRange, onLog }) {
   const [weight, setWeight] = useState(String(plannedWeight || ''))
   const [reps, setReps] = useState('')
-  const [rpe, setRpe] = useState('')
+  const [rpe, setRpe] = useState('8')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
@@ -90,7 +92,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
     setTimeout(() => setDone(false), 700)
     setWeight(String(w))
     setReps('')
-    setRpe('')
+    setRpe('8')
     setNotes('')
     setLoading(false)
   }
@@ -102,7 +104,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
         Подход {setNum}/{totalSets} · {repsRange} повт · RPE {rpeRange}
       </div>
 
-      <div className="set-row">
+      <div className="set-row-2col">
         <div>
           <div className="set-input-label">Вес, кг</div>
           <input
@@ -125,16 +127,20 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
             placeholder="—"
           />
         </div>
-        <div>
-          <div className="set-input-label">RPE</div>
-          <input
-            className="set-input"
-            type="number"
-            inputMode="decimal"
-            value={rpe}
-            onChange={(e) => setRpe(e.target.value)}
-            placeholder="8"
-          />
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div className="set-input-label" style={{ marginBottom: 6 }}>RPE — усилие</div>
+        <div className="rpe-pills">
+          {RPE_PILLS.map((v) => (
+            <button
+              key={v}
+              className={`rpe-pill${String(rpe) === String(v) ? ' active' : ''}`}
+              onClick={() => { haptic('light'); setRpe(String(v)) }}
+            >
+              {v}
+            </button>
+          ))}
         </div>
       </div>
 

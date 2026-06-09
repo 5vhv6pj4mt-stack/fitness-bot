@@ -151,7 +151,10 @@ export default function Nutrition() {
   if (loading) return <div className="spinner">Загружаем питание...</div>
   if (err) return <div className="spinner" style={{ color: '#f87171' }}>{err}</div>
 
-  const { entries, totals, goals } = data
+  const { entries = [], totals, goals } = data || {}
+  if (!totals || !goals) {
+    return <div className="spinner" style={{ color: '#f87171' }}>Ошибка загрузки данных</div>
+  }
 
   return (
     <div className="page">

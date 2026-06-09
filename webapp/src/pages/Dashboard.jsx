@@ -31,7 +31,10 @@ export default function Dashboard({ onGoWorkout }) {
   if (err) return <div className="spinner" style={{ color: '#f87171' }}>{err}</div>
 
   const { user, next_workout, nutrition_today, nutrition_goals, workout_history } = data
-  const reversedHistory = [...workout_history].reverse()
+  if (!user || !next_workout || !nutrition_today || !nutrition_goals) {
+    return <div className="spinner" style={{ color: '#f87171' }}>Ошибка загрузки данных</div>
+  }
+  const reversedHistory = [...(workout_history || [])].reverse()
 
   return (
     <div className="page">

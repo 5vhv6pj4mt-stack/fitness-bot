@@ -267,9 +267,20 @@ async def create_user(user_id: int, name: str) -> dict:
     return await get_user(user_id)
 
 
+_ALLOWED_USER_FIELDS = {
+    "name", "age", "weight", "height",
+    "goal", "experience", "days_per_week", "equipment", "injuries",
+    "goal_calories", "goal_protein", "goal_carbs", "goal_fat",
+    "current_week", "current_week_type", "current_day_index",
+    "onboarded", "utc_offset",
+}
+
 async def update_user(user_id: int, **kwargs):
     if not kwargs:
         return
+    invalid = set(kwargs.keys()) - _ALLOWED_USER_FIELDS
+    if invalid:
+        raise ValueError(f"update_user: недопустимые поля: {invalid}")
     fields = ", ".join(f"{k} = ?" for k in kwargs)
     values = list(kwargs.values()) + [user_id]
     async with aiosqlite.connect(DB_PATH) as db:
@@ -377,6 +388,14 @@ async def finish_workout(workout_id: int, total_tonnage: float, avg_rpe: float, 
             (total_tonnage, avg_rpe, notes, workout_id)
         )
         await db.commit()
+
+
+async def get_workout_by_id(workout_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM workouts WHERE id=?", (workout_id,)) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
 
 
 async def get_active_workout(user_id: int) -> dict | None:

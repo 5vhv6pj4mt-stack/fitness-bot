@@ -1,3 +1,4 @@
+import asyncio
 import json
 import aiohttp
 from groq import Groq
@@ -104,20 +105,27 @@ def _extract_json(content: str) -> dict:
 
 
 async def _ask(system: str, user: str, max_tokens: int = 1024, temperature: float = 0.3) -> str:
-    response = await _claude.messages.create(
-        model=MODEL,
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user}],
-    )
-    return response.content[0].text
+    try:
+        response = await asyncio.wait_for(
+            _claude.messages.create(
+                model=MODEL,
+                max_tokens=max_tokens,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            ),
+            timeout=30.0,
+        )
+        return response.content[0].text
+    except asyncio.TimeoutError:
+        raise RuntimeError("AI не отвечает, попробуй ещё раз")
+    except Exception as e:
+        raise RuntimeError(f"Ошибка AI: {e}") from e
 
 
 # ── Публичные функции ─────────────────────────────────────────────────────────
 
 async def transcribe_voice(audio_bytes: bytes, filename: str = "voice.ogg") -> str:
-    import asyncio
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     result = await loop.run_in_executor(
         None,
         lambda: _groq_sync.audio.transcriptions.create(
