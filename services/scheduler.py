@@ -5,7 +5,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from database.db import was_food_logged_recently
+from database.db import was_food_logged_recently, was_workout_done_today
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +138,52 @@ async def _send_weekly_report():
             await _bot.send_message(user_id, "\n".join(lines), parse_mode="HTML")
         except Exception as e:
             logger.warning("Weekly report failed for user %s: %s", user_id, e)
+
+
+async def _send_workout_reminder(user_id: int):
+    from database.db import get_user, get_active_workout
+    from datetime import date, timedelta, timezone, timedelta as td
+    if _bot is None:
+        return
+    user = await get_user(user_id)
+    if not user:
+        return
+    utc_offset = user.get("utc_offset", 7)
+    local_date = (date.today() + td(hours=utc_offset)).isoformat() if utc_offset else date.today().isoformat()
+    if await was_workout_done_today(user_id, local_date):
+        return
+    active = await get_active_workout(user_id)
+    if active:
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="💪 Начать тренировку", callback_data="go_workout")
+    ]])
+    try:
+        await _bot.send_message(
+            user_id,
+            "💪 <b>Время тренироваться!</b>\n\nСегодня день тренировки — не пропускай, прогресс делается стабильностью.",
+            parse_mode="HTML",
+            reply_markup=kb,
+        )
+    except Exception as e:
+        logger.warning("Не удалось отправить напоминание о тренировке %s: %s", user_id, e)
+
+
+def setup_workout_reminder(user_id: int, hour: int = 17, minute: int = 0):
+    """Регистрирует ежедневное напоминание о тренировке для пользователя."""
+    if _scheduler is None:
+        return
+    job_id = f"workout_{user_id}"
+    _scheduler.add_job(
+        _send_workout_reminder,
+        "cron",
+        hour=hour,
+        minute=minute,
+        args=[user_id],
+        id=job_id,
+        replace_existing=True,
+        timezone="Asia/Krasnoyarsk",
+    )
 
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:

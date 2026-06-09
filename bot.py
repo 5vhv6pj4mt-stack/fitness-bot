@@ -12,7 +12,7 @@ from aiogram.types import BotCommand, MenuButtonCommands
 from config import BOT_TOKEN
 from database.db import init_db, get_all_onboarded_users, get_meal_reminders
 from handlers import main_menu, nutrition, workout, onboarding, settings, stats, edit
-from services.scheduler import setup_scheduler, setup_daily_reminders
+from services.scheduler import setup_scheduler, setup_daily_reminders, setup_workout_reminder
 
 logging.basicConfig(
     level=logging.INFO,
@@ -84,6 +84,7 @@ async def main():
     for uid in await get_all_onboarded_users():
         meals = await get_meal_reminders(uid)
         setup_daily_reminders(uid, meals)
+        setup_workout_reminder(uid)
 
     logger.info("Fitness Bot запущен")
     try:

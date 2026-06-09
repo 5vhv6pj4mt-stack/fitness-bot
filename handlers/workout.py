@@ -9,7 +9,7 @@ from database.db import (get_user, update_user, create_workout, save_set,
                           finish_workout, get_last_workout_by_day, get_workout_sets,
                           get_user_program, get_user_day_types, get_user_week_types,
                           update_workout_progress, get_active_workout, discard_all_active_workouts,
-                          update_exercise_weight)
+                          update_exercise_weight, delete_workout_set)
 from keyboards.keyboards import (main_menu, workout_menu, workout_logging_keyboard,
                                   finish_keyboard, rest_timer_keyboard, rest_input_keyboard,
                                   set_input_keyboard, next_set_keyboard)
@@ -440,7 +440,7 @@ async def _advance_after_set(
     workout_id = data["workout_id"]
     ex = exercises[ex_index]
 
-    await save_set(workout_id, ex["exercise"], set_index + 1, ex["weight"], weight, reps, rpe, notes)
+    set_id = await save_set(workout_id, ex["exercise"], set_index + 1, ex["weight"], weight, reps, rpe, notes)
     all_sets.append({"exercise": ex["exercise"], "actual_weight": weight, "reps": reps, "rpe": rpe})
 
     next_set = set_index + 1
@@ -449,7 +449,8 @@ async def _advance_after_set(
         next_ex += 1
         next_set = 0
 
-    await state.update_data(ex_index=next_ex, set_index=next_set, all_sets=all_sets)
+    await state.update_data(ex_index=next_ex, set_index=next_set, all_sets=all_sets,
+                             last_set_id=set_id, last_set_ex_idx=ex_index, last_set_set_idx=set_index)
     await update_workout_progress(workout_id, next_ex, next_set)
 
     # Удаляем старые служебные сообщения
@@ -461,6 +462,11 @@ async def _advance_after_set(
     if next_ex >= len(exercises):
         await finish_workout_flow(message, state)
         return
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    undo_kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="↩️ Отменить подход", callback_data=f"undo_set:{set_id}")
+    ]])
 
     next_ex_obj = exercises[next_ex]
     is_new_ex = next_set == 0
@@ -474,10 +480,8 @@ async def _advance_after_set(
         next_rest = _parse_rest_seconds(next_ex_obj["rest"])
         await state.update_data(current_weight=nw, current_reps=nr, current_rpe=nrpe,
                                  current_rest=next_rest, rest_info_msg_id=None)
-        text = (
-            f"✅ <b>{ex['exercise']}</b> — готово!{note_str}"
-        )
-        sent = await message.answer(text, parse_mode="HTML")
+        text = f"✅ <b>{ex['exercise']}</b> — готово!{note_str}"
+        sent = await message.answer(text, parse_mode="HTML", reply_markup=undo_kb)
         task = asyncio.create_task(
             _rest_timer_task(message.bot, message.chat.id, rest_secs)
         )
@@ -495,7 +499,7 @@ async def _advance_after_set(
             + table
             + f"\n\n<b>{ex['exercise']} — подход {next_set + 1}/{ex['sets']}</b>"
         )
-        sent = await message.answer(text, parse_mode="HTML")
+        sent = await message.answer(text, parse_mode="HTML", reply_markup=undo_kb)
         task = asyncio.create_task(
             _rest_timer_task(message.bot, message.chat.id, rest_secs)
         )
@@ -994,3 +998,57 @@ async def show_progress(message: Message):
             f"   🏋️ Тоннаж: {w['total_tonnage']:.0f}кг · RPE: {w['avg_rpe']:.1f}"
         )
     await send_nav(message, "\n".join(lines), reply_markup=workout_menu(day_label, week_label))
+
+
+@router.callback_query(F.data.startswith("undo_set:"))
+async def cb_undo_set(callback: CallbackQuery, state: FSMContext):
+    set_id = int(callback.data.split(":", 1)[1])
+    data = await state.get_data()
+
+    if data.get("last_set_id") != set_id:
+        await callback.answer("Отменить можно только последний подход", show_alert=True)
+        return
+
+    await delete_workout_set(set_id)
+
+    ex_index = data["last_set_ex_idx"]
+    set_index = data["last_set_set_idx"]
+    all_sets = data.get("all_sets", [])
+    if all_sets:
+        all_sets.pop()
+
+    await state.update_data(
+        ex_index=ex_index, set_index=set_index,
+        all_sets=all_sets, last_set_id=None,
+        last_set_ex_idx=None, last_set_set_idx=None,
+    )
+    workout_id = data["workout_id"]
+    await update_workout_progress(workout_id, ex_index, set_index)
+
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+    exercises = data["exercises"]
+    ex = exercises[ex_index]
+    cur_w = data.get("current_weight", ex["weight"])
+    cur_r = data.get("current_reps", 5)
+    cur_rpe = data.get("current_rpe", 8.0)
+    cur_rest = data.get("current_rest") or _parse_rest_seconds(ex["rest"])
+    text, kb = _build_set_prompt({**data, "ex_index": ex_index, "set_index": set_index,
+                                   "current_weight": cur_w, "current_reps": cur_r,
+                                   "current_rpe": cur_rpe, "current_rest": cur_rest})
+    sent = await callback.message.answer(
+        f"↩️ Подход отменён. Повтори ввод.\n\n{text}", parse_mode="HTML", reply_markup=kb
+    )
+    await state.update_data(prompt_msg_id=sent.message_id)
+    await callback.answer("Подход удалён")
+
+
+@router.callback_query(F.data == "go_workout")
+async def cb_go_workout(callback: CallbackQuery, state: FSMContext):
+    """Обрабатывает кнопку из напоминания о тренировке."""
+    await callback.answer()
+    await callback.message.delete()
+    await start_workout(callback.message, state)

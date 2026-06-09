@@ -4,7 +4,8 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 
 from database.db import (get_user, log_food, get_day_nutrition, get_day_food_entries,
-                          save_food_template, get_food_templates, get_food_template, delete_food_template)
+                          save_food_template, get_food_templates, get_food_template, delete_food_template,
+                          delete_food_entry, get_food_entry)
 from keyboards.keyboards import nutrition_menu, main_menu
 from services.ai_service import parse_food, parse_food_photo, get_nutrition_advice, transcribe_voice
 from handlers.nav import send_nav, track_msg, meal_icon
@@ -124,7 +125,14 @@ async def food_detail(message: Message):
         f"🫒 Жиры:     <b>{totals['fat']:.0f}</b> / {goals['fat']}г ({fat_pct:.0f}%)"
     )
 
+    del_buttons = [
+        InlineKeyboardButton(text=f"🗑 {i}", callback_data=f"food_del:{e['id']}")
+        for i, e in enumerate(entries, 1)
+    ]
+    del_rows = [del_buttons[i:i+4] for i in range(0, len(del_buttons), 4)]
+    del_kb = InlineKeyboardMarkup(inline_keyboard=del_rows)
     await send_nav(message, "\n".join(lines), reply_markup=main_menu())
+    await message.answer("Удалить приём пищи:", reply_markup=del_kb)
 
 
 
@@ -194,7 +202,8 @@ async def _process_food(message: Message, state: FSMContext, food_text: str,
             f"{'✅ Цель выполнена!' if remaining <= 0 else f'До цели: {remaining:.0f} ккал'}",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="💾 Сохранить как шаблон", callback_data=f"tmpl_save:{entry_id}")
+                InlineKeyboardButton(text="💾 Шаблон", callback_data=f"tmpl_save:{entry_id}"),
+                InlineKeyboardButton(text="🗑 Удалить", callback_data=f"food_del:{entry_id}"),
             ]])
         )
         track_msg(message.from_user.id, status_msg.message_id)
@@ -439,3 +448,19 @@ async def tmpl_name_input(message: Message, state: FSMContext):
         f"Теперь доступен в <b>📌 Шаблоны</b>.",
         parse_mode="HTML",
     )
+
+
+@router.callback_query(F.data.startswith("food_del:"))
+async def cb_food_delete(callback: CallbackQuery):
+    entry_id = int(callback.data.split(":", 1)[1])
+    entry = await get_food_entry(entry_id)
+    if not entry or entry["user_id"] != callback.from_user.id:
+        await callback.answer("Запись не найдена", show_alert=True)
+        return
+    await delete_food_entry(entry_id)
+    short = entry["description"][:40] + ("…" if len(entry["description"]) > 40 else "")
+    await callback.answer(f"Удалено: {short}", show_alert=False)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass

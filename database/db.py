@@ -330,6 +330,15 @@ async def get_day_food_entries(user_id: int, date: str) -> list[dict]:
             return [dict(r) for r in await cur.fetchall()]
 
 
+async def was_workout_done_today(user_id: int, date_str: str) -> bool:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM workouts WHERE user_id=? AND date=? AND is_finished=1 LIMIT 1",
+            (user_id, date_str)
+        ) as cur:
+            return await cur.fetchone() is not None
+
+
 async def was_food_logged_recently(user_id: int, minutes: int = 30) -> bool:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
@@ -351,13 +360,14 @@ async def create_workout(user_id: int, date: str, day_type: str,
 
 
 async def save_set(workout_id: int, exercise: str, set_number: int,
-                   planned_weight: float, actual_weight: float, reps: int, rpe: float, notes: str = None):
+                   planned_weight: float, actual_weight: float, reps: int, rpe: float, notes: str = None) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
+        cur = await db.execute(
             "INSERT INTO workout_sets (workout_id, exercise, set_number, planned_weight, actual_weight, reps, rpe, notes) VALUES (?,?,?,?,?,?,?,?)",
             (workout_id, exercise, set_number, planned_weight, actual_weight, reps, rpe, notes)
         )
         await db.commit()
+        return cur.lastrowid
 
 
 async def finish_workout(workout_id: int, total_tonnage: float, avg_rpe: float, notes: str = None):

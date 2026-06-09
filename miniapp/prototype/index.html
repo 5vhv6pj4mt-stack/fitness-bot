@@ -344,6 +344,34 @@ body{background:#000;display:flex;justify-content:center;min-height:100vh;font-f
 .food-textarea:focus{border-color:var(--blue)}
 .food-textarea::placeholder{color:var(--hint)}
 
+/* ── INPUT METHODS v2 ── */
+.im-section{padding:4px 12px 0}
+.im-row{display:flex;gap:9px}
+.im-btn{flex:1;background:var(--bg2);border:1.5px solid var(--sep);border-radius:18px;padding:18px 6px 14px;display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;-webkit-tap-highlight-color:transparent}
+.im-btn:active{transform:scale(.95);opacity:.85}
+.im-btn.im-selected{border-color:var(--blue);background:rgba(10,132,255,.08)}
+.im-btn-voice{background:rgba(10,132,255,.04);border-color:rgba(10,132,255,.28);box-shadow:0 0 18px rgba(10,132,255,.12)}
+.im-btn-voice.im-selected,.im-btn-voice.im-recording{border-color:var(--blue);background:rgba(10,132,255,.12)}
+.im-btn.im-recording .im-icon-circle{animation:recPulse 1s ease-in-out infinite}
+.im-icon-circle{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;transition:all .2s;flex-shrink:0}
+.im-icon-photo{background:rgba(255,159,10,.15)}
+.im-icon-voice{background:rgba(10,132,255,.15)}
+.im-icon-text{background:rgba(48,209,88,.15)}
+.im-btn-title{font-size:14px;font-weight:700;color:var(--text)}
+.im-btn-sub{font-size:11px;color:var(--hint);text-align:center;line-height:1.3}
+.im-ai-badge{position:absolute;top:9px;right:9px;background:var(--blue);color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:10px;letter-spacing:.3px}
+/* Inline textarea */
+.food-textarea-inline{width:100%;background:var(--bg2);border:1.5px solid var(--bg3);border-radius:14px;padding:14px;font-size:16px;color:var(--text);font-family:inherit;resize:none;height:108px;outline:none;transition:border-color .2s,box-shadow .2s;line-height:1.5;display:block;margin-bottom:10px}
+.food-textarea-inline:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(10,132,255,.12)}
+.food-textarea-inline::placeholder{color:var(--hint)}
+/* Voice waveform */
+.voice-waves{display:flex;align-items:center;justify-content:center;gap:4px;height:40px}
+.vwave{width:3.5px;border-radius:4px;background:var(--blue);animation:vwAnim 1.1s ease-in-out infinite}
+.vwave:nth-child(1){animation-delay:0s}.vwave:nth-child(2){animation-delay:.12s}.vwave:nth-child(3){animation-delay:.24s}
+.vwave:nth-child(4){animation-delay:.36s}.vwave:nth-child(5){animation-delay:.48s}.vwave:nth-child(6){animation-delay:.6s}
+.vwave:nth-child(7){animation-delay:.48s}.vwave:nth-child(8){animation-delay:.36s}.vwave:nth-child(9){animation-delay:.24s}
+@keyframes vwAnim{0%,100%{height:6px;opacity:.35}50%{height:34px;opacity:1}}
+
 /* Portion chips (step 3) */
 .parsed-item-v2{padding:14px 16px;border-bottom:1px solid var(--sep)}
 .parsed-item-v2:last-child{border-bottom:none}
@@ -796,7 +824,7 @@ body{background:#000;display:flex;justify-content:center;min-height:100vh;font-f
 
   <div class="nutr-add">
     <div class="add-btn-big" onclick="showScreen('s-add-food')">＋ Добавить приём пищи</div>
-    <div class="voice-btn" onclick="showScreen('s-add-food')">🎤</div>
+    <div class="voice-btn" onclick="showScreen('s-add-food');setTimeout(()=>selectInputMethod('voice'),200)" title="Голосовой ввод">🎤</div>
   </div>
 </div>
 
@@ -1324,33 +1352,61 @@ body{background:#000;display:flex;justify-content:center;min-height:100vh;font-f
       </div>
     </div>
 
-    <!-- Voice (primary CTA) -->
-    <div class="voice-section">
-      <button class="voice-fab" id="voice-fab" onclick="toggleVoice()">🎤</button>
-      <div class="voice-fab-label">Надиктовать голосом</div>
-      <div class="voice-fab-sub">Скажите что съели — AI определит КБЖУ</div>
-      <div class="voice-text-link" onclick="showFoodStep('1b')">✏️ Написать текстом</div>
-    </div>
+    <!-- ── INPUT METHODS ── -->
+    <div class="im-section">
+      <div class="im-row">
 
-  </div>
+        <!-- Photo -->
+        <div class="im-btn" id="im-btn-photo" onclick="selectInputMethod('photo')">
+          <div class="im-icon-circle im-icon-photo">📸</div>
+          <div class="im-btn-title">Фото</div>
+          <div class="im-btn-sub">Снимок блюда</div>
+        </div>
 
-  <!-- ── STEP 1b: ТЕКСТ ── -->
-  <div class="step" id="food-step-1b">
-    <div class="af-header">
-      <div class="back-btn" onclick="showFoodStep(1)">←</div>
-      <div class="af-title">Описать текстом</div>
-      <div style="width:80px"></div>
-    </div>
-    <textarea class="food-textarea" id="food-input"
-      placeholder="Что съели? Пишите как угодно:
+        <!-- Voice (primary) -->
+        <div class="im-btn im-btn-voice" id="im-btn-voice" onclick="selectInputMethod('voice')">
+          <span class="im-ai-badge">AI</span>
+          <div class="im-icon-circle im-icon-voice" id="im-voice-icon">🎤</div>
+          <div class="im-btn-title">Голос</div>
+          <div class="im-btn-sub">Надиктуй</div>
+        </div>
+
+        <!-- Text -->
+        <div class="im-btn" id="im-btn-text" onclick="selectInputMethod('text')">
+          <div class="im-icon-circle im-icon-text">✏️</div>
+          <div class="im-btn-title">Текст</div>
+          <div class="im-btn-sub">Напиши</div>
+        </div>
+
+      </div>
+
+      <!-- Inline text input (shown when text selected) -->
+      <div id="inline-text-panel" style="display:none;padding:12px 0 4px">
+        <textarea class="food-textarea-inline" id="food-input"
+          placeholder="Что съели? Пишите как угодно:
 
 «гречка с курицей, 300г»
 «2 яйца и тост с маслом»
 «обед в кафе — борщ и котлета»"></textarea>
-    <div style="padding:0 12px">
-      <button class="btn btn-primary" onclick="analyzeFood()">Проанализировать →</button>
+        <button class="btn btn-primary" onclick="analyzeFood()">Проанализировать →</button>
+      </div>
+
+      <!-- Voice recording state (shown during recording) -->
+      <div id="voice-rec-panel" style="display:none;padding:20px 0 8px;text-align:center">
+        <div class="voice-waves">
+          <div class="vwave"></div><div class="vwave"></div><div class="vwave"></div>
+          <div class="vwave"></div><div class="vwave"></div><div class="vwave"></div>
+          <div class="vwave"></div><div class="vwave"></div><div class="vwave"></div>
+        </div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);margin-top:10px">Слушаю...</div>
+        <div style="font-size:12px;color:var(--hint);margin-top:4px;margin-bottom:14px">Скажите что съели — AI определит КБЖУ</div>
+        <button class="btn btn-secondary" style="max-width:200px;margin:0 auto" onclick="stopVoice()">⏹ Остановить</button>
+      </div>
+
     </div>
+
   </div>
+
 
   <!-- ── STEP 2: AI LOADING ── -->
   <div class="step" id="food-step-2">
@@ -1444,6 +1500,9 @@ body{background:#000;display:flex;justify-content:center;min-height:100vh;font-f
   </div>
 
 </div>
+
+<!-- Hidden photo input -->
+<input type="file" id="food-photo-input" accept="image/*" capture="environment" style="display:none" onchange="handlePhotoSelected(this)">
 
 <!-- Food save dock (step 3 only) -->
 <div class="food-save-dock" id="food-save-dock" style="display:none">
@@ -1759,39 +1818,80 @@ function showFoodStep(n) {
   document.getElementById('s-add-food').scrollTop = 0;
   const dock = document.getElementById('food-save-dock');
   dock.style.display = (n == 3) ? 'block' : 'none';
-  // auto-focus textarea on text step
-  if (n === '1b') {
-    setTimeout(() => {
-      const ta = document.getElementById('food-input');
-      if (ta) ta.focus();
-    }, 50);
+  if (n == 1) {
+    document.getElementById('inline-text-panel').style.display = 'none';
+    document.getElementById('voice-rec-panel').style.display = 'none';
+    ['photo','voice','text'].forEach(m => {
+      const btn = document.getElementById('im-btn-' + m);
+      if (btn) btn.classList.remove('im-selected','im-recording');
+    });
+    if (voiceActive) stopVoice();
   }
 }
 
-// Voice toggle (simulated)
+// ── Input method selection ──
 let voiceActive = false;
-function toggleVoice() {
-  const fab = document.getElementById('voice-fab');
-  if (!voiceActive) {
-    voiceActive = true;
-    fab.classList.add('recording');
-    fab.textContent = '⏹';
-    showToast('🎤 Запись...');
+let voiceTimer = null;
+
+function selectInputMethod(method) {
+  // Reset active states on all buttons
+  ['photo','voice','text'].forEach(m => {
+    const btn = document.getElementById('im-btn-' + m);
+    if (btn) btn.classList.remove('im-selected','im-recording');
+  });
+
+  // Toggle off voice if already recording
+  if (method === 'voice' && voiceActive) { stopVoice(); return; }
+
+  // Hide inline panels
+  document.getElementById('inline-text-panel').style.display = 'none';
+  document.getElementById('voice-rec-panel').style.display = 'none';
+  if (voiceActive) stopVoice();
+
+  if (method === 'text') {
+    document.getElementById('im-btn-text').classList.add('im-selected');
+    document.getElementById('inline-text-panel').style.display = 'block';
     setTimeout(() => {
-      voiceActive = false;
-      fab.classList.remove('recording');
-      fab.textContent = '🎤';
+      const ta = document.getElementById('food-input');
+      if (ta) { ta.focus(); ta.scrollIntoView({behavior:'smooth', block:'nearest'}); }
+    }, 60);
+
+  } else if (method === 'voice') {
+    document.getElementById('im-btn-voice').classList.add('im-selected','im-recording');
+    document.getElementById('voice-rec-panel').style.display = 'block';
+    voiceActive = true;
+    // Simulate: auto-finish after 3 s
+    voiceTimer = setTimeout(() => {
+      stopVoice();
       showToast('✓ Распознано!');
       setTimeout(() => {
+        document.querySelector('#food-step-2 .ai-loading-text').textContent = 'Анализирую состав...';
+        document.querySelector('#food-step-2 .ai-loading-sub').innerHTML = 'Claude определяет КБЖУ<br>по вашему описанию';
         showFoodStep(2);
         setTimeout(() => showFoodStep(3), 2000);
-      }, 500);
-    }, 2500);
-  } else {
-    voiceActive = false;
-    fab.classList.remove('recording');
-    fab.textContent = '🎤';
+      }, 400);
+    }, 3000);
+
+  } else if (method === 'photo') {
+    document.getElementById('food-photo-input').click();
   }
+}
+
+function stopVoice() {
+  voiceActive = false;
+  if (voiceTimer) { clearTimeout(voiceTimer); voiceTimer = null; }
+  const btn = document.getElementById('im-btn-voice');
+  if (btn) btn.classList.remove('im-selected','im-recording');
+  document.getElementById('voice-rec-panel').style.display = 'none';
+}
+
+function handlePhotoSelected(input) {
+  if (!input.files || !input.files[0]) return;
+  document.querySelector('#food-step-2 .ai-loading-text').textContent = 'Анализирую фото...';
+  document.querySelector('#food-step-2 .ai-loading-sub').innerHTML = 'AI определяет состав блюда<br>по фотографии';
+  showFoodStep(2);
+  setTimeout(() => showFoodStep(3), 2500);
+  input.value = ''; // allow re-selection of same file
 }
 
 function repeatYesterday() {
