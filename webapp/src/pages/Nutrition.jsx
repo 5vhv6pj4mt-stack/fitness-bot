@@ -1,21 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { api } from '../api'
 import { haptic } from '../tg'
-
-function ProgressBar({ label, current, goal, color }) {
-  const pct = goal ? Math.min((current / goal) * 100, 100) : 0
-  return (
-    <div className="prog-bar">
-      <div className="prog-bar-header">
-        <span className="prog-bar-label">{label}</span>
-        <span className="prog-bar-value">{Math.round(current)} / {goal}</span>
-      </div>
-      <div className="prog-track">
-        <div className="prog-fill" style={{ width: `${pct}%`, background: color }} />
-      </div>
-    </div>
-  )
-}
+import ProgressBar from '../components/ProgressBar'
 
 export default function Nutrition() {
   const [data, setData] = useState(null)
@@ -23,7 +9,13 @@ export default function Nutrition() {
   const [err, setErr] = useState(null)
   const [foodText, setFoodText] = useState('')
   const [sending, setSending] = useState(false)
+  const [toast, setToast] = useState(null)
   const inputRef = useRef(null)
+
+  const showToast = (msg, isError = false) => {
+    setToast({ msg, isError })
+    setTimeout(() => setToast(null), 3000)
+  }
 
   const load = () => {
     setLoading(true)
@@ -44,8 +36,9 @@ export default function Nutrition() {
       setFoodText('')
       await load()
       haptic('medium')
+      showToast('Приём пищи записан ✓')
     } catch (e) {
-      alert('Ошибка: ' + e.message)
+      showToast('Ошибка: ' + e.message, true)
     } finally {
       setSending(false)
     }
@@ -65,6 +58,11 @@ export default function Nutrition() {
 
   return (
     <div className="page">
+      {toast && (
+        <div className={`toast ${toast.isError ? 'toast-error' : 'toast-ok'}`}>
+          {toast.msg}
+        </div>
+      )}
       <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>🍽 Питание</div>
 
       {/* КБЖУ прогресс */}

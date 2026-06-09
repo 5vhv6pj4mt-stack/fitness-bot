@@ -1,26 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, memo } from 'react'
 import { BarChart, Bar, XAxis, ResponsiveContainer, Tooltip, Cell } from 'recharts'
 import { api } from '../api'
 import { haptic } from '../tg'
+import ProgressBar from '../components/ProgressBar'
 
-function ProgressBar({ label, current, goal, color }) {
-  const pct = goal ? Math.min((current / goal) * 100, 100) : 0
-  return (
-    <div className="prog-bar">
-      <div className="prog-bar-header">
-        <span className="prog-bar-label">{label}</span>
-        <span className="prog-bar-value">
-          {Math.round(current)} / {goal}
-        </span>
-      </div>
-      <div className="prog-track">
-        <div className="prog-fill" style={{ width: `${pct}%`, background: color }} />
-      </div>
-    </div>
-  )
-}
-
-const CustomTooltip = ({ active, payload }) => {
+const CustomTooltip = memo(({ active, payload }) => {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
   return (
@@ -29,7 +13,7 @@ const CustomTooltip = ({ active, payload }) => {
       <div style={{ color: 'var(--hint)' }}>{d.tonnage} кг тоннаж</div>
     </div>
   )
-}
+})
 
 export default function Dashboard({ onGoWorkout }) {
   const [data, setData] = useState(null)
@@ -47,6 +31,7 @@ export default function Dashboard({ onGoWorkout }) {
   if (err) return <div className="spinner" style={{ color: '#f87171' }}>{err}</div>
 
   const { user, next_workout, nutrition_today, nutrition_goals, workout_history } = data
+  const reversedHistory = [...workout_history].reverse()
 
   return (
     <div className="page">
@@ -106,7 +91,7 @@ export default function Dashboard({ onGoWorkout }) {
         <div className="card">
           <div className="section-title">Тоннаж по тренировкам</div>
           <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={[...workout_history].reverse()} barCategoryGap="30%">
+            <BarChart data={reversedHistory} barCategoryGap="30%">
               <XAxis
                 dataKey="day_label"
                 tick={{ fontSize: 10, fill: 'var(--hint)' }}
@@ -115,7 +100,7 @@ export default function Dashboard({ onGoWorkout }) {
               />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
               <Bar dataKey="tonnage" radius={[4, 4, 0, 0]}>
-                {[...workout_history].reverse().map((_, i, arr) => (
+                {reversedHistory.map((_, i, arr) => (
                   <Cell
                     key={i}
                     fill={i === arr.length - 1 ? 'var(--accent)' : 'rgba(255,255,255,0.2)'}

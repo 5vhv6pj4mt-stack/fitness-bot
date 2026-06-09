@@ -1,22 +1,33 @@
 import { getInitData } from './tg'
 
 const BASE = '/fitness/api'
+const TIMEOUT_MS = 10000
 
 async function req(path, options = {}) {
   const initData = getInitData()
-  const res = await fetch(BASE + path, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-init-data': initData,
-      ...(options.headers || {}),
-    },
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(err.detail || 'Request failed')
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    const res = await fetch(BASE + path, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-init-data': initData,
+        ...(options.headers || {}),
+      },
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(err.detail || 'Request failed')
+    }
+    return res.json()
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Сервер не отвечает, попробуй ещё раз')
+    throw e
+  } finally {
+    clearTimeout(timeoutId)
   }
-  return res.json()
 }
 
 export const api = {

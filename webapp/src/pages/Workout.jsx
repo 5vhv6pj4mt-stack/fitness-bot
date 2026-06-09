@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useReducer, useRef, useState, useCallback } from 'react'
 import { api } from '../api'
 import { haptic } from '../tg'
 
@@ -76,6 +76,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
   const [rpe, setRpe] = useState('')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
+  const [done, setDone] = useState(false)
 
   const submit = async () => {
     const w = parseFloat(weight)
@@ -85,6 +86,8 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
     setLoading(true)
     haptic('medium')
     await onLog({ weight: w, reps: r, rpe: rpeVal, notes: notes.trim() || null })
+    setDone(true)
+    setTimeout(() => setDone(false), 700)
     setWeight(String(w))
     setReps('')
     setRpe('')
@@ -145,11 +148,11 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
       />
 
       <button
-        className="btn-primary"
+        className={`btn-primary${done ? ' btn-success' : ''}`}
         disabled={loading || !weight || !reps}
         onClick={submit}
       >
-        {loading ? 'Сохраняю...' : 'Записать подход ✓'}
+        {loading ? 'Сохраняю...' : done ? '✓ Записано!' : 'Записать подход ✓'}
       </button>
     </div>
   )
@@ -182,38 +185,89 @@ function FinishScreen({ result, onBack }) {
   )
 }
 
+// ── Reducer ───────────────────────────────────────────────────────────────────
+const initial = {
+  plan: null,
+  loading: true,
+  err: null,
+  workoutId: null,
+  exercises: [],
+  exIndex: 0,
+  setIndex: 0,
+  loggedSets: [],
+  showRest: false,
+  finishResult: null,
+  finishing: false,
+}
+
+function reducer(state, action) {
+  switch (action.type) {
+    case 'PLAN_OK': {
+      const aw = action.plan.active_workout
+      if (aw) {
+        return {
+          ...state,
+          plan: action.plan,
+          loading: false,
+          workoutId: aw.id,
+          exercises: action.plan.exercises,
+          exIndex: aw.ex_index ?? 0,
+          setIndex: aw.set_index ?? 0,
+          loggedSets: [],
+          showRest: false,
+        }
+      }
+      return { ...state, plan: action.plan, loading: false }
+    }
+    case 'PLAN_ERR':
+      return { ...state, err: action.err, loading: false }
+    case 'START':
+      return {
+        ...state,
+        workoutId: action.workoutId,
+        exercises: action.exercises,
+        exIndex: 0, setIndex: 0,
+        loggedSets: [], showRest: false,
+      }
+    case 'LOG':
+      return { ...state, loggedSets: [...state.loggedSets, action.set] }
+    case 'NEXT_SET':
+      return { ...state, setIndex: state.setIndex + 1, showRest: true }
+    case 'NEXT_EX':
+      return { ...state, exIndex: state.exIndex + 1, setIndex: 0, showRest: false }
+    case 'REST_DONE':
+      return { ...state, showRest: false }
+    case 'FINISHING':
+      return { ...state, finishing: true }
+    case 'FINISH_OK':
+      return { ...state, finishing: false, finishResult: action.result }
+    case 'FINISH_ERR':
+      return { ...state, finishing: false, err: action.err }
+    case 'BACK':
+      return { ...state, finishResult: null, workoutId: null, loading: true, loggedSets: [] }
+    case 'RELOAD_OK':
+      return { ...state, plan: action.plan, loading: false }
+    default:
+      return state
+  }
+}
+
 // ── Main Workout page ─────────────────────────────────────────────────────────
 export default function Workout() {
-  const [plan, setPlan] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [err, setErr] = useState(null)
-
-  // active workout state
-  const [workoutId, setWorkoutId] = useState(null)
-  const [exercises, setExercises] = useState([])
-  const [exIndex, setExIndex] = useState(0)
-  const [setIndex, setSetIndex] = useState(0)
-  const [loggedSets, setLoggedSets] = useState([])
-  const [showRest, setShowRest] = useState(false)
-  const [finishResult, setFinishResult] = useState(null)
-  const [finishing, setFinishing] = useState(false)
+  const [state, dispatch] = useReducer(reducer, initial)
+  const { plan, loading, err, workoutId, exercises, exIndex, setIndex, loggedSets, showRest, finishResult, finishing } = state
+  const finishingRef = useRef(false)
 
   useEffect(() => {
     api.workoutPlan()
-      .then(setPlan)
-      .catch((e) => setErr(e.message))
-      .finally(() => setLoading(false))
+      .then((plan) => dispatch({ type: 'PLAN_OK', plan }))
+      .catch((e) => dispatch({ type: 'PLAN_ERR', err: e.message }))
   }, [])
 
   const handleStart = async () => {
     haptic('medium')
     const res = await api.startWorkout()
-    setWorkoutId(res.workout_id)
-    setExercises(res.exercises)
-    setExIndex(0)
-    setSetIndex(0)
-    setLoggedSets([])
-    setShowRest(false)
+    dispatch({ type: 'START', workoutId: res.workout_id, exercises: res.exercises })
   }
 
   const handleLog = async ({ weight, reps, rpe, notes }) => {
@@ -229,9 +283,9 @@ export default function Workout() {
       notes,
     })
 
-    const newSet = { exercise: ex.exercise, actual_weight: weight, reps, rpe }
+    const newSet = { id: `${ex.exercise}-${setIndex}-${Date.now()}`, exercise: ex.exercise, actual_weight: weight, reps, rpe }
+    dispatch({ type: 'LOG', set: newSet })
     const newLogged = [...loggedSets, newSet]
-    setLoggedSets(newLogged)
 
     const nextSet = setIndex + 1
     if (nextSet >= ex.sets) {
@@ -240,38 +294,41 @@ export default function Workout() {
         await doFinish(newLogged)
         return
       }
-      setExIndex(nextEx)
-      setSetIndex(0)
+      dispatch({ type: 'NEXT_EX' })
     } else {
-      setSetIndex(nextSet)
-      setShowRest(true)
-      return
+      dispatch({ type: 'NEXT_SET' })
     }
-    setShowRest(false)
   }
 
-  const doFinish = async (sets = loggedSets) => {
-    setFinishing(true)
+  const doFinish = useCallback(async (sets = loggedSets) => {
+    if (finishingRef.current) return
+    finishingRef.current = true
+    dispatch({ type: 'FINISHING' })
     haptic('heavy')
-    const res = await api.finishWorkout({
-      workout_id: workoutId,
-      sets,
-      day_type: plan.day_type,
-      week_type: plan.week_type,
-    })
-    setFinishResult(res)
-    setFinishing(false)
-  }
+    try {
+      const res = await api.finishWorkout({
+        workout_id: workoutId,
+        sets,
+        day_type: plan.day_type,
+        week_type: plan.week_type,
+      })
+      dispatch({ type: 'FINISH_OK', result: res })
+    } catch (e) {
+      dispatch({ type: 'FINISH_ERR', err: e.message })
+    } finally {
+      finishingRef.current = false
+    }
+  }, [loggedSets, workoutId, plan])
 
   if (loading) return <div className="spinner">Загружаем план...</div>
   if (err) return <div className="spinner" style={{ color: '#f87171' }}>{err}</div>
 
   if (finishResult) {
     return <FinishScreen result={finishResult} onBack={() => {
-      setFinishResult(null)
-      setWorkoutId(null)
-      setLoading(true)
-      api.workoutPlan().then(setPlan).finally(() => setLoading(false))
+      dispatch({ type: 'BACK' })
+      api.workoutPlan()
+        .then((plan) => dispatch({ type: 'RELOAD_OK', plan }))
+        .catch((e) => dispatch({ type: 'PLAN_ERR', err: e.message }))
     }} />
   }
 
@@ -316,7 +373,9 @@ export default function Workout() {
 
   // Active workout
   const ex = exercises[exIndex]
-  const progress = Math.round(((exIndex * ex?.sets + setIndex) / exercises.reduce((s, e) => s + e.sets, 0)) * 100)
+  const totalSets = exercises.reduce((s, e) => s + e.sets, 0)
+  const doneSets = exercises.slice(0, exIndex).reduce((s, e) => s + e.sets, 0) + setIndex
+  const progress = Math.round((doneSets / totalSets) * 100)
 
   return (
     <div className="page">
@@ -332,7 +391,7 @@ export default function Workout() {
       </div>
 
       {showRest ? (
-        <RestTimer onDone={() => setShowRest(false)} />
+        <RestTimer onDone={() => dispatch({ type: 'REST_DONE' })} />
       ) : (
         <SetForm
           exercise={ex.exercise}
@@ -350,9 +409,15 @@ export default function Workout() {
         <div className="card">
           <div className="section-title">Записано</div>
           {loggedSets.slice(-8).map((s, i) => (
-            <div key={i} className="set-history-item">
-              <span style={{ color: 'var(--hint)' }}>{s.exercise}</span>
-              <span>{s.actual_weight}кг × {s.reps} · RPE {s.rpe}</span>
+            <div key={s.id} className="set-history-item">
+              <div>
+                <span className="set-history-num">#{i + 1}</span>
+                <span className="set-history-exercise">{s.exercise}</span>
+              </div>
+              <div className="set-history-data">
+                <span>{s.actual_weight}кг × {s.reps}</span>
+                <span className="set-history-rpe">RPE {s.rpe}</span>
+              </div>
             </div>
           ))}
         </div>
