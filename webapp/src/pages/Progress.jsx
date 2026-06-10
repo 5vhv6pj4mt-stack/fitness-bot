@@ -14,7 +14,7 @@ function WorkoutSheet({ workout, onClose, onSetDeleted }) {
     try {
       await api.deleteSet(setId)
       setSets(prev => prev.filter(s => s.id !== setId))
-      onSetDeleted(workout.id)
+      onSetDeleted()
     } catch (e) {
       alert('Ошибка: ' + e.message)
     } finally { setDeleting(null) }
@@ -85,15 +85,7 @@ function WeekTab() {
     loadRecent()
   }, [])
 
-  const handleSetDeleted = (workoutId) => {
-    loadRecent()
-    if (selectedWorkout?.id === workoutId) {
-      setSelectedWorkout(prev => ({
-        ...prev,
-        sets: recentWorkouts.find(w => w.id === workoutId)?.sets || prev.sets,
-      }))
-    }
-  }
+  const handleSetDeleted = () => { loadRecent() }
 
   if (loading) return <div style={{ color: 'var(--hint)', textAlign: 'center', padding: 32 }}>Загружаем...</div>
   if (!data) return <div style={{ color: '#f87171', textAlign: 'center', padding: 32 }}>Ошибка загрузки</div>
@@ -189,6 +181,34 @@ function WeekTab() {
           </div>
         )}
       </div>
+
+      {/* История тренировок */}
+      {recentWorkouts.length > 0 && (
+        <div className="card">
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>📋 История тренировок</div>
+          {recentWorkouts.map((w, i) => (
+            <div key={w.id}
+              onClick={() => setSelectedWorkout(w)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '10px 0', cursor: 'pointer',
+                borderTop: i > 0 ? '1px solid var(--sep)' : 'none',
+              }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{w.day_type}</div>
+                <div style={{ fontSize: 11, color: 'var(--hint)' }}>{w.date} · {w.week_type}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{w.tonnage.toLocaleString()} кг</div>
+                  {w.avg_rpe > 0 && <div style={{ fontSize: 11, color: 'var(--hint)' }}>RPE {w.avg_rpe}</div>}
+                </div>
+                <span style={{ color: 'var(--hint)', fontSize: 18 }}>›</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Питание */}
       <div className="card">
