@@ -101,7 +101,7 @@ function WaterStrip() {
     try { const r = await api.waterAdd(); setWater(r) } catch {}
   }
 
-  if (!water) return null
+  if (!water || water.notif_water === false) return null
   const { glasses, goal } = water
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px 6px', borderBottom: '1px solid var(--sep)' }}>

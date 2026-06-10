@@ -235,33 +235,35 @@ export default function Profile({ onBack }) {
             <div className="sr-label">Напоминать о воде</div>
             <Toggle on={data.notif_water ?? true} onChange={(v) => save('notif_water', v)} />
           </div>
-          <div style={{ paddingLeft: 44, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div>
-              <div style={{ fontSize: 12, color: 'var(--hint)', marginBottom: 6 }}>Цель в день</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {[6, 8, 10, 12].map((n) => (
-                  <button key={n} className={`wset-chip${(data.water_goal || 8) === n ? ' active' : ''}`}
-                    onClick={() => save('water_goal', n)}>
-                    {n} ст.
-                  </button>
-                ))}
+          {(data.notif_water ?? true) && (
+            <div style={{ paddingLeft: 44, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--hint)', marginBottom: 6 }}>Цель в день</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[6, 8, 10, 12].map((n) => (
+                    <button key={n} className={`wset-chip${(data.water_goal || 8) === n ? ' active' : ''}`}
+                      onClick={() => save('water_goal', n)}>
+                      {n} ст.
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 12, color: 'var(--hint)', marginBottom: 6 }}>Напоминать каждые</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {[1, 2, 3].map((h) => (
+                    <button key={h} className={`wset-chip${(data.water_interval || 2) === h ? ' active' : ''}`}
+                      onClick={() => save('water_interval', h)}>
+                      {h} ч
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--hint)', lineHeight: 1.5 }}>
+                Бот отправит тихое уведомление в Telegram.<br />Не беспокоит ночью (с 22:00 до 8:00).
               </div>
             </div>
-            <div>
-              <div style={{ fontSize: 12, color: 'var(--hint)', marginBottom: 6 }}>Напоминать каждые</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {[1, 2, 3].map((h) => (
-                  <button key={h} className={`wset-chip${(data.water_interval || 2) === h ? ' active' : ''}`}
-                    onClick={() => save('water_interval', h)}>
-                    {h} ч
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--hint)', lineHeight: 1.5 }}>
-              Бот отправит тихое уведомление в Telegram.<br />Не беспокоит ночью (с 22:00 до 8:00).
-            </div>
-          </div>
+          )}
         </div>
       </div>
 

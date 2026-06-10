@@ -511,15 +511,20 @@ WATER_GOAL = 8
 @app.get("/api/water/today")
 async def water_today(x_init_data: str = Header(alias="x-init-data")):
     user_id = validate_init_data(x_init_data)
+    user = await get_user(user_id)
+    notif_water = bool(user.get("notif_water", 1)) if user else True
+    goal = (user.get("water_goal") or WATER_GOAL) if user else WATER_GOAL
     glasses = await get_water_today(user_id, today())
-    return {"glasses": glasses, "goal": WATER_GOAL}
+    return {"glasses": glasses, "goal": goal, "notif_water": notif_water}
 
 
 @app.post("/api/water/add")
 async def water_add(x_init_data: str = Header(alias="x-init-data")):
     user_id = validate_init_data(x_init_data)
+    user = await get_user(user_id)
+    goal = (user.get("water_goal") or WATER_GOAL) if user else WATER_GOAL
     glasses = await add_water_glass(user_id, today())
-    return {"glasses": glasses, "goal": WATER_GOAL}
+    return {"glasses": glasses, "goal": goal}
 
 
 @app.post("/api/nutrition/log-photo")
