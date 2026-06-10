@@ -14,6 +14,7 @@ from config import BOT_TOKEN, DB_PATH
 
 logging.basicConfig(level=logging.INFO)
 from database.db import (
+    init_db,
     get_user, update_user, get_day_nutrition, get_day_food_entries,
     get_last_workouts, get_workout_sets, log_food,
     get_user_program, get_user_day_types, get_user_week_types,
@@ -28,7 +29,14 @@ from database.db import (
     get_frequent_foods,
 )
 
-app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app):
+    await init_db()
+    yield
+
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
