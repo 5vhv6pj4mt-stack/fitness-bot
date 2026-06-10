@@ -21,71 +21,15 @@ function ElapsedTimer({ startedAt }) {
   return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt}</span>
 }
 
-// ── Rest timer ────────────────────────────────────────────────────────────────
-function RestTimer({ onDone }) {
-  const [selected, setSelected] = useState(null)
-  const [remaining, setRemaining] = useState(0)
-  const intervalRef = useRef(null)
-
-  const OPTIONS = [
-    { label: '1 мин', s: 60 },
-    { label: '1:30', s: 90 },
-    { label: '2 мин', s: 120 },
-    { label: '2:30', s: 150 },
-  ]
-
-  const start = (s) => {
-    clearInterval(intervalRef.current)
-    setSelected(s)
-    setRemaining(s)
-    intervalRef.current = setInterval(() => {
-      setRemaining((r) => {
-        if (r <= 1) {
-          clearInterval(intervalRef.current)
-          haptic('heavy')
-          return 0
-        }
-        return r - 1
-      })
-    }, 1000)
-  }
-
-  useEffect(() => () => clearInterval(intervalRef.current), [])
-
-  const fmt = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-
-  return (
-    <div className="card">
-      {selected ? (
-        <div className="rest-timer">
-          <div className="rest-timer-count">{fmt(remaining)}</div>
-          <div className="rest-timer-label">
-            {remaining === 0 ? '⚡️ Время! Начинай подход' : 'Отдыхай...'}
-          </div>
-        </div>
-      ) : (
-        <div className="section-title" style={{ marginBottom: 12 }}>Выбери время отдыха</div>
-      )}
-      <div className="timer-btns">
-        {OPTIONS.map((o) => (
-          <button
-            key={o.s}
-            className={`timer-btn${selected === o.s ? ' active' : ''}`}
-            onClick={() => { haptic('light'); start(o.s) }}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-      <button
-        className="btn-primary"
-        style={{ marginTop: 12 }}
-        onClick={() => { haptic('medium'); onDone() }}
-      >
-        Следующий подход →
-      </button>
-    </div>
-  )
+// ── Rest seconds parser ───────────────────────────────────────────────────────
+function parseRestSecs(rest) {
+  if (!rest || rest === '—') return 0
+  let s = 0
+  const m = rest.match(/(\d+)м/)
+  const sec = rest.match(/(\d+)с/)
+  if (m) s += parseInt(m[1]) * 60
+  if (sec) s += parseInt(sec[1])
+  return s || 120
 }
 
 // ── Set input form ────────────────────────────────────────────────────────────
@@ -109,8 +53,8 @@ function Stepper({ value, onChange, step, min = 0, fmt = (v) => v }) {
   )
 }
 
-function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRange, lastWeight, lastReps, lastRpe, suggestedWeight, onLog }) {
-  const initWeight = suggestedWeight || plannedWeight || 0
+function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRange, lastWeight, lastReps, lastRpe, suggestedWeight, restSecs, onLog }) {
+  const initWeight = plannedWeight || suggestedWeight || 0
   const initReps = parseInt(String(repsRange).split('-')[0]) || 5
 
   const [weight, setWeight] = useState(initWeight)
@@ -119,6 +63,24 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
+  const [restRemaining, setRestRemaining] = useState(0)
+  const restRef = useRef(null)
+
+  useEffect(() => () => clearInterval(restRef.current), [])
+
+  const fmtRest = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+
+  const startRest = (secs) => {
+    clearInterval(restRef.current)
+    setRestRemaining(secs)
+    restRef.current = setInterval(() => {
+      setRestRemaining((r) => {
+        if (r <= 1) { clearInterval(restRef.current); haptic('heavy'); return 0 }
+        if (r === 11) haptic('light')
+        return r - 1
+      })
+    }, 1000)
+  }
 
   const submit = async () => {
     if (!weight || !reps) return
@@ -131,6 +93,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
     setRpe('8')
     setNotes('')
     setLoading(false)
+    if (restSecs > 0) startRest(restSecs)
   }
 
   return (
@@ -196,6 +159,27 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
       >
         {loading ? 'Сохраняю...' : done ? '✓ Записано!' : 'Записать подход ✓'}
       </button>
+
+      {restRemaining > 0 && (
+        <div style={{
+          marginTop: 12, padding: '10px 14px',
+          background: 'var(--bg)', borderRadius: 12,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16 }}>⏱</span>
+            <span style={{ fontSize: 18, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: restRemaining <= 10 ? 'var(--orange)' : 'var(--text)' }}>
+              Отдых: {fmtRest(restRemaining)}
+            </span>
+          </div>
+          <button
+            onClick={() => { clearInterval(restRef.current); setRestRemaining(0) }}
+            style={{ fontSize: 13, color: 'var(--hint)', background: 'var(--bg3)', border: 'none', borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}
+          >
+            пропустить
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -395,7 +379,6 @@ const initial = {
   exIndex: 0,
   setIndex: 0,
   loggedSets: [],
-  showRest: false,
   finishResult: null,
   finishing: false,
   startedAt: null,
@@ -438,11 +421,9 @@ function reducer(state, action) {
     case 'LOG':
       return { ...state, loggedSets: [...state.loggedSets, action.set] }
     case 'NEXT_SET':
-      return { ...state, setIndex: state.setIndex + 1, showRest: true }
+      return { ...state, setIndex: state.setIndex + 1 }
     case 'NEXT_EX':
-      return { ...state, exIndex: state.exIndex + 1, setIndex: 0, showRest: false }
-    case 'REST_DONE':
-      return { ...state, showRest: false }
+      return { ...state, exIndex: state.exIndex + 1, setIndex: 0 }
     case 'FINISHING':
       return { ...state, finishing: true }
     case 'FINISH_OK':
@@ -461,7 +442,7 @@ function reducer(state, action) {
 // ── Main Workout page ─────────────────────────────────────────────────────────
 export default function Workout({ onGoProgress }) {
   const [state, dispatch] = useReducer(reducer, initial)
-  const { plan, loading, err, workoutId, exercises, exIndex, setIndex, loggedSets, showRest, finishResult, finishing, startedAt } = state
+  const { plan, loading, err, workoutId, exercises, exIndex, setIndex, loggedSets, finishResult, finishing, startedAt } = state
   const finishingRef = useRef(false)
 
   useEffect(() => {
@@ -573,23 +554,21 @@ export default function Workout({ onGoProgress }) {
         </div>
       </div>
 
-      {showRest ? (
-        <RestTimer onDone={() => dispatch({ type: 'REST_DONE' })} />
-      ) : (
-        <SetForm
-          exercise={ex.exercise}
-          setNum={setIndex + 1}
-          totalSets={ex.sets}
-          plannedWeight={ex.weight}
-          repsRange={ex.reps_range}
-          rpeRange={ex.rpe_range}
-          lastWeight={ex.last_weight}
-          lastReps={ex.last_reps}
-          lastRpe={ex.last_rpe}
-          suggestedWeight={ex.suggested_weight}
-          onLog={handleLog}
-        />
-      )}
+      <SetForm
+        key={exIndex}
+        exercise={ex.exercise}
+        setNum={setIndex + 1}
+        totalSets={ex.sets}
+        plannedWeight={ex.weight}
+        repsRange={ex.reps_range}
+        rpeRange={ex.rpe_range}
+        lastWeight={ex.last_weight}
+        lastReps={ex.last_reps}
+        lastRpe={ex.last_rpe}
+        suggestedWeight={ex.suggested_weight}
+        restSecs={parseRestSecs(ex.rest)}
+        onLog={handleLog}
+      />
 
       {/* Logged sets */}
       {loggedSets.length > 0 && (

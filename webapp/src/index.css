@@ -1,17 +1,19 @@
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
 
 :root {
-  --bg: #18181b;
-  --bg2: #27272a;
-  --bg3: #3f3f46;
-  --bg4: #52525b;
-  --text: #f4f4f5;
-  --hint: #a1a1aa;
-  --accent: #3b82f6;
+  --bg: #1c1c1e;
+  --bg2: #2c2c2e;
+  --bg3: #3a3a3c;
+  --bg4: #48484a;
+  --text: #ffffff;
+  --hint: #8e8e93;
+  --accent: #0a84ff;
   --accent-text: #fff;
-  --radius: 14px;
+  --radius: 16px;
+  --nav-h: 72px;
+  --nav-bg: rgba(28,28,30,0.92);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --sep: rgba(255,255,255,0.07);
+  --sep: rgba(255,255,255,0.08);
   --bg-hover: rgba(255,255,255,0.06);
   --border: rgba(255,255,255,0.12);
   --blue: #0a84ff;
@@ -21,16 +23,35 @@
   --red: #ff453a;
 }
 
-/* Telegram theme vars (тёмная/светлая тема автоматически) */
+/* Telegram theme vars — обновляются автоматически */
 @supports (color: var(--tg-theme-bg-color)) {
   :root {
-    --bg:   var(--tg-theme-bg-color, #18181b);
-    --bg2:  var(--tg-theme-secondary-bg-color, #27272a);
-    --text: var(--tg-theme-text-color, #f4f4f5);
-    --hint: var(--tg-theme-hint-color, #a1a1aa);
-    --accent: var(--tg-theme-button-color, #3b82f6);
+    --bg:   var(--tg-theme-bg-color, #1c1c1e);
+    --bg2:  var(--tg-theme-secondary-bg-color, #2c2c2e);
+    --text: var(--tg-theme-text-color, #ffffff);
+    --hint: var(--tg-theme-hint-color, #8e8e93);
+    --accent: var(--tg-theme-button-color, #0a84ff);
     --accent-text: var(--tg-theme-button-text-color, #fff);
   }
+}
+
+/* Светлая тема (устанавливается JS через applyColorScheme) */
+html.tg-light {
+  --bg: #f2f2f7;
+  --bg2: #ffffff;
+  --bg3: #e5e5ea;
+  --bg4: #d1d1d6;
+  --text: #000000;
+  --hint: #6c6c70;
+  --sep: rgba(0,0,0,0.10);
+  --bg-hover: rgba(0,0,0,0.04);
+  --border: rgba(0,0,0,0.12);
+  --nav-bg: rgba(242,242,247,0.94);
+  --blue: #007aff;
+  --green: #34c759;
+  --orange: #ff9500;
+  --red: #ff3b30;
+  --purple: #af52de;
 }
 
 body {
@@ -44,9 +65,9 @@ body {
 
 button { cursor: pointer; border: none; outline: none; font-family: inherit; font-size: inherit; }
 
-.page { min-height: 100dvh; padding: 12px 16px calc(80px + var(--safe-bottom)); }
+.page { min-height: 100dvh; padding: 12px 16px calc(var(--nav-h) + 8px + var(--safe-bottom)); }
 
-.card { background: var(--bg2); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+.card { background: var(--bg2); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
 
 .section-title {
   font-size: 13px; font-weight: 600; color: var(--hint);
@@ -55,8 +76,9 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; fon
 
 .btn-primary {
   width: 100%; background: var(--accent); color: var(--accent-text);
-  padding: 14px; border-radius: var(--radius); font-size: 16px; font-weight: 600; transition: opacity 0.15s;
+  padding: 15px; border-radius: 13px; font-size: 16px; font-weight: 600; transition: opacity 0.15s, transform 0.1s;
 }
+.btn-primary:active { transform: scale(0.97); }
 .btn-primary:active { opacity: 0.75; }
 .btn-primary:disabled { opacity: 0.4; cursor: default; }
 
@@ -73,17 +95,28 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; fon
 
 .navbar {
   position: fixed; bottom: 0; left: 0; right: 0;
-  background: var(--bg2); display: flex;
+  height: var(--nav-h);
+  background: var(--nav-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  display: flex; align-items: center;
   border-top: 1px solid var(--sep);
   padding-bottom: var(--safe-bottom); z-index: 100;
 }
 .nav-tab {
   flex: 1; background: none; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; padding: 8px 2px; color: var(--hint); transition: color 0.15s;
-  min-height: 44px;
+  align-items: center; justify-content: center; gap: 3px;
+  padding: 8px 2px; color: var(--hint); transition: color 0.15s;
+  min-width: 0;
 }
 .nav-tab.active { color: var(--accent); }
-.nav-tab svg { width: 24px; height: 24px; }
+.nav-tab svg { width: 24px; height: 24px; flex-shrink: 0; }
+.nav-tab .nav-label {
+  font-size: 9px; font-weight: 500; color: var(--hint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%; transition: color 0.15s;
+}
+.nav-tab.active .nav-label { color: var(--accent); }
 
 .spinner { display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--hint); }
 
@@ -216,9 +249,82 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; fon
 }
 .food-entry-more:active { background: var(--bg-hover); }
 
+/* ── Settings / Profile groups ──────────────────────────────────────────── */
+.settings-group { background: var(--bg2); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+.sg-title { font-size: 12px; font-weight: 600; color: var(--hint); text-transform: uppercase; letter-spacing: 0.5px; padding: 14px 16px 6px; }
+.sr { display: flex; align-items: center; padding: 13px 16px; border-top: 1px solid var(--sep); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.sr:first-of-type { border-top: none; }
+.sr-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; margin-right: 12px; flex-shrink: 0; }
+.sr-label { flex: 1; font-size: 15px; color: var(--text); }
+.sr-value { font-size: 14px; color: var(--hint); margin-right: 6px; }
+.sr-chevron { color: var(--bg4); font-size: 16px; }
+.sr-danger .sr-label { color: var(--red); }
+.sr-danger .sr-chevron { color: var(--red); }
+
+/* Profile hero */
+.profile-hero { background: var(--bg2); border-radius: var(--radius); padding: 24px 16px 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 10px; }
+.profile-avatar-big { width: 76px; height: 76px; background: var(--blue); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 700; color: #fff; }
+.profile-name { font-size: 21px; font-weight: 700; color: var(--text); }
+.profile-since { font-size: 12px; color: var(--hint); }
+.profile-stats { display: flex; width: 100%; border-top: 1px solid var(--sep); padding-top: 16px; margin-top: 4px; }
+.ps-item { flex: 1; text-align: center; }
+.ps-item + .ps-item { border-left: 1px solid var(--sep); }
+.ps-val { font-size: 20px; font-weight: 700; color: var(--text); }
+.ps-label { font-size: 11px; color: var(--hint); margin-top: 3px; }
+
+/* Toggle switch */
+.toggle { width: 48px; height: 28px; background: var(--bg3); border-radius: 14px; position: relative; cursor: pointer; transition: background 0.2s; flex-shrink: 0; border: none; }
+.toggle.on { background: var(--green); }
+.toggle::after { content: ''; position: absolute; width: 22px; height: 22px; background: #fff; border-radius: 50%; top: 3px; left: 3px; transition: transform 0.2s; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+.toggle.on::after { transform: translateX(20px); }
+
+/* Water/settings chips */
+.wset-chip { padding: 6px 14px; background: var(--bg3); border-radius: 20px; font-size: 13px; font-weight: 500; color: var(--hint); cursor: pointer; border: 1.5px solid transparent; transition: all 0.15s; }
+.wset-chip.active { background: rgba(10,132,255,.15); border-color: var(--blue); color: var(--blue); }
+.wset-chip:active { transform: scale(0.93); }
+
+/* ── Nutrition summary card ──────────────────────────────────────────────── */
+.nutr-summary { background: var(--bg2); border-radius: var(--radius); padding: 16px; margin-bottom: 10px; }
+.nutr-top { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
+.ring-wrap { position: relative; flex-shrink: 0; }
+.ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring-kcal { font-size: 20px; font-weight: 700; color: var(--text); line-height: 1; }
+.ring-sub { font-size: 10px; color: var(--hint); margin-top: 2px; }
+.nutr-macros { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.nm-row { display: flex; align-items: center; gap: 8px; }
+.nm-name { font-size: 12px; width: 46px; font-weight: 600; }
+.nm-bar-wrap { flex: 1; height: 7px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+.nm-bar { height: 100%; border-radius: 4px; transition: width 0.5s; }
+.nm-val { font-size: 11px; color: var(--hint); width: 58px; text-align: right; white-space: nowrap; }
+.kcal-goal { text-align: center; font-size: 13px; color: var(--hint); }
+.kcal-goal span { color: var(--text); font-weight: 600; }
+
+/* Meal groups */
+.meal-group { background: var(--bg2); border-radius: var(--radius); margin-bottom: 10px; overflow: hidden; }
+.meal-group-header { padding: 12px 16px 8px; display: flex; justify-content: space-between; align-items: center; }
+.mgh-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.mgh-time { font-size: 12px; color: var(--hint); margin-top: 1px; }
+.mgh-kcal { font-size: 13px; font-weight: 600; color: var(--orange); }
+.meal-item { padding: 10px 16px; border-top: 1px solid var(--sep); display: flex; align-items: center; gap: 8px; }
+.mi-body { flex: 1; min-width: 0; }
+.mi-name { font-size: 14px; color: var(--text); margin-bottom: 3px; }
+.mi-macros { font-size: 12px; color: var(--hint); }
+.mi-macros span { margin-right: 8px; }
+.mi-del { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; color: var(--hint); font-size: 18px; border-radius: 8px; -webkit-tap-highlight-color: transparent; }
+.mi-del:active { background: var(--sep); }
+
+/* Nutrition dock */
+.nutr-dock { position: fixed; bottom: var(--nav-h); left: 0; right: 0; background: var(--bg); border-top: 1px solid var(--sep); z-index: 90; }
+.nib { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px 7px; background: var(--bg2); border-radius: 12px; border: 1.5px solid transparent; cursor: pointer; transition: all 0.18s; -webkit-tap-highlight-color: transparent; }
+.nib:active { transform: scale(0.93); opacity: 0.85; }
+.nib.nib-active { border-color: var(--blue); background: rgba(10,132,255,.08); }
+.nib.nib-recording { border-color: var(--red); background: rgba(255,69,58,.08); }
+.nib-icon { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+.nib-label { font-size: 10px; font-weight: 600; color: var(--text); }
+
 /* ── Toast ───────────────────────────────────────────────────────────────── */
 .toast {
-  position: fixed; bottom: calc(72px + var(--safe-bottom)); left: 16px; right: 16px;
+  position: fixed; bottom: calc(var(--nav-h) + 8px + var(--safe-bottom)); left: 16px; right: 16px;
   padding: 12px 16px; border-radius: 12px; font-size: 14px; font-weight: 500;
   z-index: 200; text-align: center; pointer-events: none;
   animation: toast-in 0.2s ease;

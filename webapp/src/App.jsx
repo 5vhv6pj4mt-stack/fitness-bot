@@ -95,9 +95,9 @@ export default function App() {
             key={t.id}
             className={`nav-tab${tab === t.id ? ' active' : ''}`}
             onClick={() => setTab(t.id)}
-            title={t.label}
           >
             {t.icon}
+            <span className="nav-label">{t.label}</span>
           </button>
         ))}
       </nav>

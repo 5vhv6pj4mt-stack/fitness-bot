@@ -53,6 +53,12 @@ async def init_db():
             ("injuries", "TEXT"),
             ("onboarded", "INTEGER DEFAULT 0"),
             ("utc_offset", "INTEGER DEFAULT 7"),
+            ("water_goal", "INTEGER DEFAULT 8"),
+            ("water_interval", "INTEGER DEFAULT 2"),
+            ("notif_water", "INTEGER DEFAULT 1"),
+            ("notif_breakfast", "INTEGER DEFAULT 1"),
+            ("notif_workout", "INTEGER DEFAULT 1"),
+            ("notif_evening", "INTEGER DEFAULT 0"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -310,6 +316,8 @@ _ALLOWED_USER_FIELDS = {
     "goal_calories", "goal_protein", "goal_carbs", "goal_fat",
     "current_week", "current_week_type", "current_day_index",
     "onboarded", "utc_offset",
+    "water_goal", "water_interval",
+    "notif_water", "notif_breakfast", "notif_workout", "notif_evening",
 }
 
 async def update_user(user_id: int, **kwargs):

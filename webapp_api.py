@@ -861,7 +861,7 @@ async def week_report_endpoint(x_init_data: str = Header(alias="x-init-data")):
                 "date": w["date"],
                 "day_type": DAY_TYPE_LABELS.get(w.get("day_type", ""), w.get("day_type", "—")),
                 "tonnage": round(w.get("total_tonnage") or 0),
-                "rpe": w.get("avg_rpe"),
+                "rpe": round(w.get("avg_rpe"), 1) if w.get("avg_rpe") is not None else None,
             }
             for w in workouts
         ],
@@ -987,12 +987,13 @@ async def muscles_endpoint(x_init_data: str = Header(alias="x-init-data")):
 _GOAL_LABELS = {
     "weight_loss": "Похудение",
     "muscle_gain": "Набор массы",
+    "mass": "Набор массы",
     "maintenance": "Поддержание формы",
     "strength": "Сила",
     "endurance": "Выносливость",
 }
 _EQUIPMENT_LABELS = {
-    "gym": "Тренажёрный зал",
+    "gym": "Зал",
     "home": "Дома",
     "minimal": "Минимум инвентаря",
     "barbell": "Штанга + гантели",
@@ -1029,6 +1030,13 @@ async def profile_get(x_init_data: str = Header(alias="x-init-data")):
         "nutrition_days_tracked": nutr_avg["days_tracked"],
         "utc_offset": utc_offset,
         "timezone_label": tz_str,
+        "water_goal": user.get("water_goal") or 8,
+        "water_interval": user.get("water_interval") or 2,
+        "notif_water": bool(user.get("notif_water", 1)),
+        "notif_breakfast": bool(user.get("notif_breakfast", 1)),
+        "notif_workout": bool(user.get("notif_workout", 1)),
+        "notif_evening": bool(user.get("notif_evening", 0)),
+        "created_at": user.get("created_at", ""),
     }
 
 
@@ -1040,12 +1048,27 @@ class ProfileUpdateRequest(BaseModel):
     goal_protein: int | None = Field(default=None, gt=0)
     goal_carbs: int | None = Field(default=None, gt=0)
     goal_fat: int | None = Field(default=None, gt=0)
+    water_goal: int | None = Field(default=None, ge=1, le=20)
+    water_interval: int | None = Field(default=None, ge=1, le=6)
+    notif_water: bool | None = None
+    notif_breakfast: bool | None = None
+    notif_workout: bool | None = None
+    notif_evening: bool | None = None
+    utc_offset: int | None = Field(default=None, ge=-12, le=14)
 
 
 @app.patch("/api/profile")
 async def profile_update(body: ProfileUpdateRequest, x_init_data: str = Header(alias="x-init-data")):
     user_id = validate_init_data(x_init_data)
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    raw = body.model_dump()
+    updates = {}
+    for k, v in raw.items():
+        if v is None:
+            continue
+        if isinstance(v, bool):
+            updates[k] = int(v)
+        else:
+            updates[k] = v
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     await update_user(user_id, **updates)

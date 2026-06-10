@@ -1,8 +1,17 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { haptic } from '../tg'
+import { haptic, setThemeOverride, getThemeOverride } from '../tg'
 
-// Inline editable row — тап открывает числовой ввод
+const MONTHS_RU = ['январе','феврале','марте','апреле','мае','июне','июле','августе','сентябре','октябре','ноябре','декабре']
+const MONTHS_SHORT = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек']
+
+function memberSince(createdAt) {
+  if (!createdAt) return ''
+  const d = new Date(createdAt.replace(' ', 'T'))
+  if (isNaN(d)) return ''
+  return `В приложении с ${MONTHS_RU[d.getMonth()]} ${d.getFullYear()}`
+}
+
 function EditRow({ icon, iconBg, label, value, unit, field, onSave }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
@@ -14,31 +23,27 @@ function EditRow({ icon, iconBg, label, value, unit, field, onSave }) {
     if (!isNaN(num) && num > 0) { await onSave(field, num); haptic('medium') }
     setEditing(false)
   }
+  const onKey = (e) => { if (e.key === 'Enter') save() }
 
   return (
     <div>
-      <div
-        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: 'pointer' }}
-        onClick={open}
-      >
-        <div style={{ width: 32, height: 32, borderRadius: 8, background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{icon}</div>
-        <div style={{ flex: 1, fontSize: 15 }}>{label}</div>
-        <div style={{ fontSize: 15, color: 'var(--hint)' }}>{value ? `${value} ${unit}` : '—'}</div>
-        <div style={{ fontSize: 12, color: 'var(--bg4)' }}>›</div>
+      <div className="sr" onClick={open}>
+        <div className="sr-icon" style={{ background: iconBg }}>{icon}</div>
+        <div className="sr-label">{label}</div>
+        <div className="sr-value">{value ? `${value} ${unit}` : '—'}</div>
+        <div className="sr-chevron">›</div>
       </div>
       {editing && (
-        <div style={{ padding: '0 16px 12px', display: 'flex', gap: 8 }}>
+        <div style={{ padding: '0 16px 12px', display: 'flex', gap: 8, borderTop: '1px solid var(--sep)' }}>
           <input
-            type="number"
-            value={val}
-            onChange={(e) => setVal(e.target.value)}
-            autoFocus
+            type="number" value={val} onChange={(e) => setVal(e.target.value)}
+            onKeyDown={onKey} autoFocus
             style={{
-              flex: 1, background: 'var(--bg3)', border: '1px solid var(--border)',
-              borderRadius: 10, padding: '8px 12px', color: 'var(--text)', fontSize: 15,
+              flex: 1, background: 'var(--bg3)', border: '1px solid var(--sep)',
+              borderRadius: 10, padding: '8px 12px', color: 'var(--text)', fontSize: 15, outline: 'none',
             }}
           />
-          <button onClick={save} className="btn-primary" style={{ padding: '8px 16px' }}>✓</button>
+          <button onClick={save} className="btn-primary" style={{ width: 'auto', padding: '8px 16px', borderRadius: 10, fontSize: 14 }}>✓</button>
           <button onClick={close} style={{ padding: '8px 12px', background: 'var(--bg3)', border: 'none', borderRadius: 10, color: 'var(--hint)', cursor: 'pointer' }}>✕</button>
         </div>
       )}
@@ -46,32 +51,46 @@ function EditRow({ icon, iconBg, label, value, unit, field, onSave }) {
   )
 }
 
-function Divider() {
-  return <div style={{ height: 1, background: 'var(--sep)', margin: '0 16px' }} />
-}
-
-function SectionTitle({ children }) {
-  return <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--hint)', textTransform: 'uppercase', letterSpacing: 0.5, padding: '16px 16px 6px' }}>{children}</div>
-}
-
-function StaticRow({ icon, iconBg, label, value, danger, onClick }) {
+function Toggle({ on, onChange }) {
   return (
-    <div
-      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: onClick ? 'pointer' : 'default' }}
-      onClick={onClick}
-    >
-      <div style={{ width: 32, height: 32, borderRadius: 8, background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{icon}</div>
-      <div style={{ flex: 1, fontSize: 15, color: danger ? 'var(--red)' : 'var(--text)' }}>{label}</div>
-      {value && <div style={{ fontSize: 15, color: 'var(--hint)' }}>{value}</div>}
-      {onClick && <div style={{ fontSize: 12, color: danger ? 'var(--red)' : 'var(--bg4)' }}>›</div>}
-    </div>
+    <button
+      className={`toggle${on ? ' on' : ''}`}
+      onClick={() => { haptic('light'); onChange(!on) }}
+    />
   )
 }
 
-function pluralDays(n) {
-  if (n === 1) return `${n} день`
-  if (n >= 2 && n <= 4) return `${n} дня`
-  return `${n} дней`
+function TzPicker({ value, onClose, onSelect }) {
+  const offsets = [-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14]
+  return (
+    <>
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 200 }} onClick={onClose} />
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0,
+        background: 'var(--bg2)', borderRadius: '20px 20px 0 0',
+        padding: '16px 0 32px', zIndex: 201, maxHeight: '60vh', overflowY: 'auto',
+      }}>
+        <div style={{ width: 36, height: 4, background: 'var(--bg4)', borderRadius: 2, margin: '0 auto 16px' }} />
+        <div style={{ fontSize: 16, fontWeight: 700, textAlign: 'center', marginBottom: 12, color: 'var(--text)' }}>Часовой пояс</div>
+        {offsets.map((off) => {
+          const label = off >= 0 ? `UTC+${off}` : `UTC${off}`
+          return (
+            <div key={off}
+              onClick={() => { onSelect(off); onClose() }}
+              style={{
+                padding: '13px 20px', fontSize: 15,
+                color: off === value ? 'var(--blue)' : 'var(--text)',
+                fontWeight: off === value ? 700 : 400,
+                borderBottom: '1px solid var(--sep)', cursor: 'pointer',
+              }}
+            >
+              {label}
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
 }
 
 export default function Profile({ onBack }) {
@@ -79,6 +98,12 @@ export default function Profile({ onBack }) {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState(null)
   const [toast, setToast] = useState(null)
+  const [showTzPicker, setShowTzPicker] = useState(false)
+  const [darkMode, setDarkMode] = useState(() => {
+    const override = getThemeOverride()
+    if (override) return override === 'dark'
+    return !document.documentElement.classList.contains('tg-light')
+  })
 
   const showToast = (msg, isError = false) => {
     setToast({ msg, isError })
@@ -94,12 +119,13 @@ export default function Profile({ onBack }) {
 
   useEffect(() => { load() }, [])
 
-  const handleSave = async (field, value) => {
+  const save = async (field, value) => {
+    setData((prev) => ({ ...prev, [field]: value }))
     try {
       await api.profileUpdate({ [field]: value })
-      setData((prev) => ({ ...prev, [field]: value }))
       showToast('Сохранено ✓')
     } catch (e) {
+      setData((prev) => ({ ...prev, [field]: typeof value === 'boolean' ? !value : prev[field] }))
       showToast('Ошибка: ' + e.message, true)
     }
   }
@@ -109,15 +135,18 @@ export default function Profile({ onBack }) {
   if (!data) return null
 
   const initial = (data.name || '?')[0].toUpperCase()
+  const tz = data.utc_offset ?? 7
+  const tzLabel = tz >= 0 ? `UTC+${tz}` : `UTC${tz}`
 
   return (
     <div className="page">
-      {toast && (
-        <div className={`toast ${toast.isError ? 'toast-error' : 'toast-ok'}`}>{toast.msg}</div>
+      {toast && <div className={`toast ${toast.isError ? 'toast-error' : 'toast-ok'}`}>{toast.msg}</div>}
+      {showTzPicker && (
+        <TzPicker value={tz} onClose={() => setShowTzPicker(false)} onSelect={(v) => save('utc_offset', v)} />
       )}
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0 4px' }}>
+      {/* Назад */}
+      <div style={{ padding: '4px 0 8px' }}>
         <button
           onClick={() => { haptic('light'); onBack?.() }}
           style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 16, cursor: 'pointer', padding: '4px 0' }}
@@ -126,91 +155,154 @@ export default function Profile({ onBack }) {
         </button>
       </div>
 
-      {/* Hero */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 16px 16px' }}>
-        <div style={{
-          width: 72, height: 72, borderRadius: '50%', background: 'var(--blue)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 28, fontWeight: 700, color: '#fff', marginBottom: 10, position: 'relative',
-        }}>
-          {initial}
-        </div>
-        <div style={{ fontSize: 20, fontWeight: 700 }}>{data.name}</div>
-        <div style={{ display: 'flex', gap: 24, marginTop: 14 }}>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>{data.total_workouts}</div>
-            <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 2 }}>тренировки</div>
+      {/* Profile hero */}
+      <div className="profile-hero">
+        <div className="profile-avatar-big">{initial}</div>
+        <div className="profile-name">{data.name}</div>
+        <div className="profile-since">{memberSince(data.created_at)}</div>
+        <div className="profile-stats">
+          <div className="ps-item">
+            <div className="ps-val">{data.total_workouts}</div>
+            <div className="ps-label">тренировки</div>
           </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--orange)' }}>{data.avg_rpe || '—'}</div>
-            <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 2 }}>средний RPE</div>
+          <div className="ps-item">
+            <div className="ps-val" style={{ color: 'var(--green)' }}>{data.weight ? `${data.weight} кг` : '—'}</div>
+            <div className="ps-label">вес тела</div>
           </div>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--blue)' }}>{data.nutrition_days_tracked ?? '—'}</div>
-            <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 2 }}>дней питания</div>
+          <div className="ps-item">
+            <div className="ps-val" style={{ color: 'var(--orange)' }}>{data.avg_rpe || '—'}</div>
+            <div className="ps-label">средний RPE</div>
           </div>
         </div>
       </div>
 
       {/* Параметры тела */}
-      <SectionTitle>Параметры тела</SectionTitle>
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <EditRow icon="⚖️" iconBg="rgba(10,132,255,.12)" label="Вес" value={data.weight} unit="кг" field="weight" onSave={handleSave} />
-        <Divider />
-        <EditRow icon="📏" iconBg="rgba(48,209,88,.12)" label="Рост" value={data.height} unit="см" field="height" onSave={handleSave} />
-        <Divider />
-        <EditRow icon="🎂" iconBg="rgba(255,159,10,.12)" label="Возраст" value={data.age} unit="лет" field="age" onSave={handleSave} />
+      <div className="settings-group">
+        <div className="sg-title">Параметры тела</div>
+        <EditRow icon="⚖️" iconBg="rgba(10,132,255,.12)" label="Вес" value={data.weight} unit="кг" field="weight" onSave={save} />
+        <EditRow icon="📏" iconBg="rgba(48,209,88,.12)" label="Рост" value={data.height} unit="см" field="height" onSave={save} />
+        <EditRow icon="🎂" iconBg="rgba(255,159,10,.12)" label="Возраст" value={data.age} unit="лет" field="age" onSave={save} />
       </div>
 
       {/* Цели питания */}
-      <SectionTitle>Цели питания</SectionTitle>
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <EditRow icon="🔥" iconBg="rgba(255,69,58,.12)" label="Калории" value={data.goal_calories} unit="ккал" field="goal_calories" onSave={handleSave} />
-        <Divider />
-        <EditRow icon="🥩" iconBg="rgba(10,132,255,.12)" label="Белки" value={data.goal_protein} unit="г" field="goal_protein" onSave={handleSave} />
-        <Divider />
-        <EditRow icon="🫒" iconBg="rgba(255,159,10,.12)" label="Жиры" value={data.goal_fat} unit="г" field="goal_fat" onSave={handleSave} />
-        <Divider />
-        <EditRow icon="🌾" iconBg="rgba(48,209,88,.12)" label="Углеводы" value={data.goal_carbs} unit="г" field="goal_carbs" onSave={handleSave} />
+      <div className="settings-group">
+        <div className="sg-title">Цели питания</div>
+        <EditRow icon="🔥" iconBg="rgba(255,69,58,.12)" label="Калории" value={data.goal_calories} unit="ккал" field="goal_calories" onSave={save} />
+        <EditRow icon="🥩" iconBg="rgba(10,132,255,.12)" label="Белки" value={data.goal_protein} unit="г" field="goal_protein" onSave={save} />
+        <EditRow icon="🫒" iconBg="rgba(255,159,10,.12)" label="Жиры" value={data.goal_fat} unit="г" field="goal_fat" onSave={save} />
+        <EditRow icon="🌾" iconBg="rgba(48,209,88,.12)" label="Углеводы" value={data.goal_carbs} unit="г" field="goal_carbs" onSave={save} />
       </div>
 
-      {/* Программа */}
-      <SectionTitle>Программа тренировок</SectionTitle>
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <StaticRow icon="🎯" iconBg="rgba(191,90,242,.12)" label="Цель" value={data.goal_label} />
-        <Divider />
-        <StaticRow icon="🏋️" iconBg="rgba(48,209,88,.12)" label="Оборудование" value={data.equipment_label} />
-        <Divider />
-        <StaticRow icon="📅" iconBg="rgba(10,132,255,.12)" label="Тренировок в неделю" value={pluralDays(data.days_per_week)} />
-        <Divider />
-        <StaticRow icon="🕐" iconBg="rgba(100,100,100,.12)" label="Часовой пояс" value={data.timezone_label || '—'} />
-        <Divider />
-        <div
-          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: 'pointer' }}
-          onClick={() => haptic('light')}
-        >
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(255,159,10,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🔄</div>
-          <div style={{ flex: 1, fontSize: 15 }}>Пересоздать программу</div>
-          <div style={{ fontSize: 12, color: 'var(--bg4)' }}>›</div>
+      {/* Программа тренировок */}
+      <div className="settings-group">
+        <div className="sg-title">Программа тренировок</div>
+        <div className="sr" style={{ cursor: 'default' }}>
+          <div className="sr-icon" style={{ background: 'rgba(191,90,242,.12)' }}>🎯</div>
+          <div className="sr-label">Цель</div>
+          <div className="sr-value">{data.goal_label || data.goal}</div>
+        </div>
+        <div className="sr" style={{ cursor: 'default' }}>
+          <div className="sr-icon" style={{ background: 'rgba(48,209,88,.12)' }}>🏋️</div>
+          <div className="sr-label">Оборудование</div>
+          <div className="sr-value">{data.equipment_label || data.equipment}</div>
+        </div>
+        <div className="sr" style={{ cursor: 'default' }}>
+          <div className="sr-icon" style={{ background: 'rgba(10,132,255,.12)' }}>📅</div>
+          <div className="sr-label">Тренировок в неделю</div>
+          <div className="sr-value">{data.days_per_week} дн.</div>
+        </div>
+        <div className="sr" onClick={() => { haptic('light'); setShowTzPicker(true) }}>
+          <div className="sr-icon" style={{ background: 'rgba(100,100,100,.12)' }}>🕐</div>
+          <div className="sr-label">Часовой пояс</div>
+          <div className="sr-value">{tzLabel}</div>
+          <div className="sr-chevron">›</div>
+        </div>
+        <div className="sr" onClick={() => haptic('light')}>
+          <div className="sr-icon" style={{ background: 'rgba(255,159,10,.12)' }}>🔄</div>
+          <div className="sr-label">Пересоздать программу</div>
+          <div className="sr-chevron">›</div>
+        </div>
+      </div>
+
+      {/* Вода */}
+      <div className="settings-group">
+        <div className="sg-title">Вода</div>
+        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12, borderTop: '1px solid var(--sep)' }}>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div className="sr-icon" style={{ background: 'rgba(10,132,255,.12)', marginRight: 12 }}>💧</div>
+            <div className="sr-label">Напоминать о воде</div>
+            <Toggle on={data.notif_water ?? true} onChange={(v) => save('notif_water', v)} />
+          </div>
+          <div style={{ paddingLeft: 44, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--hint)', marginBottom: 6 }}>Цель в день</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[6, 8, 10, 12].map((n) => (
+                  <button key={n} className={`wset-chip${(data.water_goal || 8) === n ? ' active' : ''}`}
+                    onClick={() => save('water_goal', n)}>
+                    {n} ст.
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--hint)', marginBottom: 6 }}>Напоминать каждые</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[1, 2, 3].map((h) => (
+                  <button key={h} className={`wset-chip${(data.water_interval || 2) === h ? ' active' : ''}`}
+                    onClick={() => save('water_interval', h)}>
+                    {h} ч
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--hint)', lineHeight: 1.5 }}>
+              Бот отправит тихое уведомление в Telegram.<br />Не беспокоит ночью (с 22:00 до 8:00).
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Уведомления */}
+      <div className="settings-group">
+        <div className="sg-title">Уведомления</div>
+        <div className="sr">
+          <div className="sr-icon" style={{ background: 'rgba(255,159,10,.12)' }}>🌅</div>
+          <div className="sr-label">Напоминание о завтраке</div>
+          <Toggle on={!!data.notif_breakfast} onChange={(v) => save('notif_breakfast', v)} />
+        </div>
+        <div className="sr">
+          <div className="sr-icon" style={{ background: 'rgba(10,132,255,.12)' }}>💪</div>
+          <div className="sr-label">Напоминание о тренировке</div>
+          <Toggle on={!!data.notif_workout} onChange={(v) => save('notif_workout', v)} />
+        </div>
+        <div className="sr">
+          <div className="sr-icon" style={{ background: 'rgba(48,209,88,.12)' }}>🌙</div>
+          <div className="sr-label">Вечерний итог дня</div>
+          <Toggle on={!!data.notif_evening} onChange={(v) => save('notif_evening', v)} />
         </div>
       </div>
 
       {/* Прочее */}
-      <SectionTitle>Прочее</SectionTitle>
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div
-          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: 'pointer' }}
-          onClick={() => { haptic('light'); window.Telegram?.WebApp?.openTelegramLink('https://t.me/stat_sila_bot') }}
-        >
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(10,132,255,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🔗</div>
-          <div style={{ flex: 1, fontSize: 15 }}>Открыть бота в Telegram</div>
-          <div style={{ fontSize: 12, color: 'var(--bg4)' }}>›</div>
+      <div className="settings-group">
+        <div className="sg-title">Прочее</div>
+        <div className="sr">
+          <div className="sr-icon" style={{ background: 'rgba(100,100,100,.12)' }}>🌙</div>
+          <div className="sr-label">Тёмная тема</div>
+          <Toggle on={darkMode} onChange={(v) => {
+            setDarkMode(v)
+            setThemeOverride(v ? 'dark' : 'light')
+          }} />
         </div>
-        <Divider />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: 'pointer' }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(255,69,58,.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}>🗑</div>
-          <div style={{ flex: 1, fontSize: 15, color: 'var(--red)' }}>Удалить аккаунт</div>
-          <div style={{ fontSize: 12, color: 'var(--red)' }}>›</div>
+        <div className="sr" onClick={() => { haptic('light'); window.Telegram?.WebApp?.openTelegramLink('https://t.me/stat_sila_bot') }}>
+          <div className="sr-icon" style={{ background: 'rgba(48,209,88,.12)' }}>🔗</div>
+          <div className="sr-label">Открыть бота в Telegram</div>
+          <div className="sr-chevron">›</div>
+        </div>
+        <div className="sr sr-danger">
+          <div className="sr-icon" style={{ background: 'rgba(255,69,58,.1)' }}>🗑</div>
+          <div className="sr-label">Удалить аккаунт</div>
+          <div className="sr-chevron" style={{ color: 'var(--red)' }}>›</div>
         </div>
       </div>
 

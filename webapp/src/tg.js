@@ -36,3 +36,30 @@ export function hideMainButton() {
 export function getTheme() {
   return getTg()?.themeParams || {}
 }
+
+export function applyColorScheme() {
+  const tg = getTg()
+  const override = localStorage.getItem('theme')
+  const scheme = override || tg?.colorScheme || 'dark'
+  if (scheme === 'light') {
+    document.documentElement.classList.add('tg-light')
+  } else {
+    document.documentElement.classList.remove('tg-light')
+  }
+  tg?.onEvent?.('themeChanged', () => {
+    if (!localStorage.getItem('theme')) applyColorScheme()
+  })
+}
+
+export function setThemeOverride(scheme) {
+  if (scheme) {
+    localStorage.setItem('theme', scheme)
+  } else {
+    localStorage.removeItem('theme')
+  }
+  applyColorScheme()
+}
+
+export function getThemeOverride() {
+  return localStorage.getItem('theme') || null
+}
