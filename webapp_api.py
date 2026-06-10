@@ -688,3 +688,67 @@ async def exercise_history_endpoint(
     user_id = validate_init_data(x_init_data)
     history = await get_exercise_weight_history(user_id, name, limit=8)
     return {"history": history}
+
+
+# ── Profile ───────────────────────────────────────────────────────────────────
+
+_GOAL_LABELS = {
+    "weight_loss": "Похудение",
+    "muscle_gain": "Набор массы",
+    "maintenance": "Поддержание формы",
+    "strength": "Сила",
+    "endurance": "Выносливость",
+}
+_EQUIPMENT_LABELS = {
+    "gym": "Тренажёрный зал",
+    "home": "Дома",
+    "minimal": "Минимум инвентаря",
+    "barbell": "Штанга + гантели",
+}
+
+
+@app.get("/api/profile")
+async def profile_get(x_init_data: str = Header(alias="x-init-data")):
+    user_id = validate_init_data(x_init_data)
+    user = await get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    stats = await get_all_time_stats(user_id)
+    avg_rpe = await get_avg_rpe_recent(user_id, limit=10)
+    return {
+        "name": user["name"],
+        "weight": user["weight"],
+        "height": user["height"],
+        "age": user["age"],
+        "goal": user["goal"],
+        "goal_label": _GOAL_LABELS.get(user["goal"] or "", user["goal"] or ""),
+        "equipment": user["equipment"],
+        "equipment_label": _EQUIPMENT_LABELS.get(user["equipment"] or "", user["equipment"] or ""),
+        "days_per_week": user["days_per_week"],
+        "goal_calories": user["goal_calories"],
+        "goal_protein": user["goal_protein"],
+        "goal_carbs": user["goal_carbs"],
+        "goal_fat": user["goal_fat"],
+        "total_workouts": stats["total_workouts"],
+        "avg_rpe": round(avg_rpe, 1) if avg_rpe else 0,
+    }
+
+
+class ProfileUpdateRequest(BaseModel):
+    weight: float | None = Field(default=None, gt=0, lt=500)
+    height: float | None = Field(default=None, gt=0, lt=300)
+    age: int | None = Field(default=None, gt=0, lt=120)
+    goal_calories: int | None = Field(default=None, gt=0)
+    goal_protein: int | None = Field(default=None, gt=0)
+    goal_carbs: int | None = Field(default=None, gt=0)
+    goal_fat: int | None = Field(default=None, gt=0)
+
+
+@app.patch("/api/profile")
+async def profile_update(body: ProfileUpdateRequest, x_init_data: str = Header(alias="x-init-data")):
+    user_id = validate_init_data(x_init_data)
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    await update_user(user_id, **updates)
+    return {"ok": True}

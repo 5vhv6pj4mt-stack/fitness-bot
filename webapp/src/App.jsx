@@ -4,6 +4,7 @@ import Workout from './pages/Workout'
 import Nutrition from './pages/Nutrition'
 import Progress from './pages/Progress'
 import Program from './pages/Program'
+import Profile from './pages/Profile'
 
 class ErrorBoundary extends Component {
   state = { error: null }
@@ -85,8 +86,9 @@ export default function App() {
       {tab === 'nutrition' && <Nutrition />}
       {tab === 'progress' && <Progress />}
       {tab === 'program' && <Program onGoWorkout={() => setTab('workout')} />}
+      {tab === 'profile' && <Profile onBack={() => setTab('dashboard')} />}
 
-      <nav className="navbar">
+      <nav className="navbar" style={{ display: tab === 'profile' ? 'none' : 'flex' }}>
         {TABS.map((t) => (
           <button
             key={t.id}
