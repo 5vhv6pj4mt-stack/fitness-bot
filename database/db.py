@@ -770,6 +770,56 @@ async def get_measurements_month_ago(user_id: int) -> dict | None:
             return dict(row) if row else None
 
 
+_MEAL_DEFAULTS = {
+    "breakfast": ["Овсянка на молоке", "Яичница 3 яйца", "Омлет с овощами", "Творог 200г", "Греческий йогурт с ягодами"],
+    "lunch":     ["Куриная грудка с рисом", "Гречка с говядиной", "Борщ", "Лосось с овощами", "Паста с курицей"],
+    "snack":     ["Банан", "Протеиновый коктейль", "Орехи 30г", "Творог 150г", "Яблоко + арахисовая паста"],
+    "dinner":    ["Куриная грудка на гриле", "Рыба на пару", "Омлет белковый", "Творог с ягодами", "Греческий салат с тунцом"],
+}
+
+
+async def get_meal_suggestions(user_id: int, meal_type: str, limit: int = 8) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # Yesterday's same meal
+        async with db.execute(
+            """
+            SELECT description, calories, protein, carbs, fat
+            FROM food_log
+            WHERE user_id=? AND meal_type=? AND date=date('now','-1 day')
+            ORDER BY id DESC LIMIT ?
+            """,
+            (user_id, meal_type, limit),
+        ) as cur:
+            yesterday = [dict(r) for r in await cur.fetchall()]
+
+        seen = {r["description"].lower() for r in yesterday}
+
+        # Frequent for this meal_type
+        async with db.execute(
+            """
+            SELECT description,
+                   ROUND(AVG(calories)) as calories,
+                   ROUND(AVG(protein),1) as protein,
+                   ROUND(AVG(carbs),1) as carbs,
+                   ROUND(AVG(fat),1) as fat,
+                   COUNT(*) as freq
+            FROM food_log
+            WHERE user_id=? AND meal_type=? AND date >= date('now','-30 days')
+            GROUP BY lower(description)
+            ORDER BY freq DESC LIMIT ?
+            """,
+            (user_id, meal_type, limit),
+        ) as cur:
+            frequent = [dict(r) for r in await cur.fetchall() if r["description"].lower() not in seen]
+
+        result = yesterday + frequent
+        if not result:
+            for desc in _MEAL_DEFAULTS.get(meal_type, _MEAL_DEFAULTS["snack"])[:limit]:
+                result.append({"description": desc, "calories": None, "protein": None, "carbs": None, "fat": None})
+        return result[:limit]
+
+
 async def get_frequent_foods(user_id: int, limit: int = 10) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row

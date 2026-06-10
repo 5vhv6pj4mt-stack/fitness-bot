@@ -5,16 +5,95 @@ import ProgressBar from '../components/ProgressBar'
 
 const TAB_LABELS = ['Неделя', 'Тоннаж', 'Питание', 'Веса', 'Тело', 'Мышцы']
 
+function WorkoutSheet({ workout, onClose, onSetDeleted }) {
+  const [sets, setSets] = useState(workout.sets || [])
+  const [deleting, setDeleting] = useState(null)
+
+  const handleDelete = async (setId) => {
+    setDeleting(setId)
+    try {
+      await api.deleteSet(setId)
+      setSets(prev => prev.filter(s => s.id !== setId))
+      onSetDeleted(workout.id)
+    } catch (e) {
+      alert('Ошибка: ' + e.message)
+    } finally { setDeleting(null) }
+  }
+
+  const grouped = sets.reduce((acc, s) => {
+    if (!acc[s.exercise]) acc[s.exercise] = []
+    acc[s.exercise].push(s)
+    return acc
+  }, {})
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.5)', zIndex: 200 }} />
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 201,
+        background: 'var(--bg2)', borderRadius: '20px 20px 0 0',
+        padding: '16px 0 32px', maxHeight: '70vh', overflowY: 'auto',
+      }}>
+        <div style={{ width: 36, height: 4, background: 'var(--bg4)', borderRadius: 2, margin: '0 auto 12px' }} />
+        <div style={{ padding: '0 16px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700 }}>{workout.day_type}</div>
+            <div style={{ fontSize: 12, color: 'var(--hint)' }}>{workout.date} · {workout.tonnage.toLocaleString()} кг тоннаж</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'var(--bg3)', border: 'none', borderRadius: 10, padding: '6px 12px', color: 'var(--hint)', cursor: 'pointer' }}>✕</button>
+        </div>
+        {sets.length === 0 ? (
+          <div style={{ textAlign: 'center', color: 'var(--hint)', padding: '20px 0' }}>Все подходы удалены</div>
+        ) : Object.entries(grouped).map(([exercise, exSets]) => (
+          <div key={exercise} style={{ padding: '8px 16px', borderTop: '1px solid var(--sep)' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--hint)', marginBottom: 6 }}>{exercise}</div>
+            {exSets.map((s) => (
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 0' }}>
+                <div style={{ fontSize: 14 }}>
+                  <span style={{ fontWeight: 600 }}>{s.actual_weight > 0 ? `${s.actual_weight}кг × ${s.reps}` : `${s.reps} повт.`}</span>
+                  {s.rpe ? <span style={{ color: 'var(--hint)', fontSize: 12, marginLeft: 8 }}>RPE {s.rpe}</span> : null}
+                </div>
+                <button
+                  onClick={() => handleDelete(s.id)}
+                  disabled={deleting === s.id}
+                  style={{ background: 'rgba(255,69,58,.12)', border: 'none', borderRadius: 8, padding: '4px 10px', color: 'var(--red)', fontSize: 13, cursor: 'pointer' }}
+                >
+                  {deleting === s.id ? '...' : '✕'}
+                </button>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
 function WeekTab() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [recentWorkouts, setRecentWorkouts] = useState([])
+  const [selectedWorkout, setSelectedWorkout] = useState(null)
+
+  const loadRecent = () => api.recentWorkouts().then(r => setRecentWorkouts(r.workouts || [])).catch(() => {})
 
   useEffect(() => {
     api.weekReport()
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false))
+    loadRecent()
   }, [])
+
+  const handleSetDeleted = (workoutId) => {
+    loadRecent()
+    if (selectedWorkout?.id === workoutId) {
+      setSelectedWorkout(prev => ({
+        ...prev,
+        sets: recentWorkouts.find(w => w.id === workoutId)?.sets || prev.sets,
+      }))
+    }
+  }
 
   if (loading) return <div style={{ color: 'var(--hint)', textAlign: 'center', padding: 32 }}>Загружаем...</div>
   if (!data) return <div style={{ color: '#f87171', textAlign: 'center', padding: 32 }}>Ошибка загрузки</div>
@@ -57,24 +136,41 @@ function WeekTab() {
           })}
         </div>
 
-        {workouts.length > 0 ? workouts.map((w, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            padding: '8px 0', borderBottom: i < workouts.length - 1 ? '1px solid var(--sep)' : 'none' }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{w.day_type}</div>
-              <div style={{ fontSize: 11, color: 'var(--hint)' }}>{w.date.slice(5).replace('-', '/')}</div>
+        {workouts.length > 0 ? workouts.map((w, i) => {
+          const detail = recentWorkouts.find(r => r.date === w.date && r.day_type === w.day_type)
+          return (
+            <div key={i}
+              onClick={() => detail && setSelectedWorkout(detail)}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '8px 0', borderBottom: i < workouts.length - 1 ? '1px solid var(--sep)' : 'none',
+                cursor: detail ? 'pointer' : 'default' }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{w.day_type}</div>
+                <div style={{ fontSize: 11, color: 'var(--hint)' }}>{w.date.slice(5).replace('-', '/')}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{w.tonnage.toLocaleString()} кг</div>
+                  {w.rpe && <div style={{ fontSize: 11, color: 'var(--hint)' }}>RPE {w.rpe}</div>}
+                </div>
+                {detail && <span style={{ color: 'var(--hint)', fontSize: 16 }}>›</span>}
+              </div>
             </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{w.tonnage.toLocaleString()} кг</div>
-              {w.rpe && <div style={{ fontSize: 11, color: 'var(--hint)' }}>RPE {w.rpe}</div>}
-            </div>
-          </div>
-        )) : (
+          )
+        }) : (
           <div style={{ color: 'var(--hint)', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>
             Тренировок на этой неделе ещё нет
           </div>
         )}
       </div>
+
+      {selectedWorkout && (
+        <WorkoutSheet
+          workout={selectedWorkout}
+          onClose={() => setSelectedWorkout(null)}
+          onSetDeleted={handleSetDeleted}
+        />
+      )}
 
       {/* Тоннаж */}
       <div className="card">

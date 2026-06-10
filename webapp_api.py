@@ -24,7 +24,7 @@ from database.db import (
     update_workout_progress, discard_all_active_workouts,
     get_food_entry, update_food_entry, delete_food_entry,
     get_tonnage_by_weeks, get_exercise_prs, get_all_time_stats,
-    get_nutrition_week_avg, get_daily_nutrition_7d, get_avg_rpe_recent,
+    get_nutrition_week_avg, get_daily_nutrition_7d, get_avg_rpe_recent, get_meal_suggestions,
     get_exercise_weight_history, get_user_exercises, get_last_exercise_set,
     save_workout_analysis, get_workout_analysis,
     get_last_workout_by_day,
@@ -34,6 +34,7 @@ from database.db import (
     log_measurements, get_latest_measurements, get_measurements_month_ago,
     get_week_workouts, get_week_nutrition_avg,
     update_exercise_weight,
+    delete_workout_set, recalculate_workout_totals, get_recent_workouts,
 )
 
 from contextlib import asynccontextmanager
@@ -411,6 +412,54 @@ class ExerciseWeightRequest(BaseModel):
     weight: float = Field(gt=0, lt=1000)
 
 
+@app.get("/api/workout/recent")
+async def recent_workouts(x_init_data: str = Header(alias="x-init-data")):
+    user_id = validate_init_data(x_init_data)
+    workouts = await get_recent_workouts(user_id, limit=10)
+    result = []
+    for w in workouts:
+        sets = await get_workout_sets(w["id"])
+        result.append({
+            "id": w["id"],
+            "date": w["date"],
+            "day_type": DAY_TYPES.get(w.get("day_type", ""), w.get("day_type", "—")),
+            "week_type": WEEK_TYPES.get(w.get("week_type", ""), w.get("week_type", "")),
+            "tonnage": round(w.get("total_tonnage") or 0),
+            "avg_rpe": round(w.get("avg_rpe") or 0, 1),
+            "sets": [
+                {
+                    "id": s["id"],
+                    "exercise": s["exercise"],
+                    "set_number": s["set_number"],
+                    "actual_weight": s["actual_weight"],
+                    "reps": s["reps"],
+                    "rpe": s["rpe"],
+                }
+                for s in sets
+            ],
+        })
+    return {"workouts": result}
+
+
+@app.delete("/api/workout/set/{set_id}")
+async def delete_set(set_id: int, x_init_data: str = Header(alias="x-init-data")):
+    user_id = validate_init_data(x_init_data)
+    # verify ownership
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT w.user_id, ws.workout_id FROM workout_sets ws JOIN workouts w ON w.id=ws.workout_id WHERE ws.id=?",
+            (set_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    if not row or row["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    workout_id = row["workout_id"]
+    await delete_workout_set(set_id)
+    await recalculate_workout_totals(workout_id)
+    return {"ok": True, "workout_id": workout_id}
+
+
 @app.patch("/api/workout/exercise-weight")
 async def update_exercise_weight_endpoint(
     body: ExerciseWeightRequest,
@@ -732,7 +781,8 @@ async def program_endpoint(x_init_data: str = Header(alias="x-init-data")):
 @app.get("/api/nutrition/templates")
 async def nutrition_templates(x_init_data: str = Header(alias="x-init-data")):
     user_id = validate_init_data(x_init_data)
-    foods = await get_frequent_foods(user_id, limit=10)
+    meal_type = _detect_meal_type()
+    foods = await get_meal_suggestions(user_id, meal_type, limit=8)
     return {"templates": foods}
 
 

@@ -60,4 +60,6 @@ export const api = {
   exerciseHistory: (name) => req(`/progress/exercise?name=${encodeURIComponent(name)}`),
   musclesData: () => req('/progress/muscles'),
   workoutAnalysis: (id) => req(`/workout/${id}/analysis`),
+  recentWorkouts: () => req('/workout/recent'),
+  deleteSet: (setId) => req(`/workout/set/${setId}`, { method: 'DELETE' }),
 }
