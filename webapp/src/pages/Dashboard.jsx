@@ -162,24 +162,19 @@ export default function Dashboard({ onGoWorkout, onGoProfile }) {
       </div>
 
       {/* Week stats */}
-      {week_stats && (
-        <div className="card" style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10,
+      {week_stats && week_stats.tonnage > 0 && (
+        <div style={{
+          fontSize: 13, color: 'var(--hint)', textAlign: 'center',
+          padding: '6px 0', marginBottom: 4,
         }}>
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>Эта неделя</div>
-            <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 2 }}>
-              {week_stats.workouts_count} тренировок выполнено
-            </div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>
-              {week_stats.tonnage.toLocaleString()} кг
-            </div>
-            <div style={{ fontSize: 12, color: week_stats.delta >= 0 ? 'var(--green)' : '#f87171' }}>
-              {week_stats.delta >= 0 ? '↑' : '↓'} {Math.abs(week_stats.delta).toLocaleString()} кг к прошлой
-            </div>
-          </div>
+          📊 Тоннаж{' '}
+          <span style={{ color: week_stats.delta >= 0 ? 'var(--green)' : '#f87171', fontWeight: 600 }}>
+            {week_stats.delta >= 0 ? '↑' : '↓'} {week_stats.delta !== 0 ? `+${Math.abs(week_stats.delta).toLocaleString()}кг` : ''}
+          </span>
+          {week_stats.delta === 0
+            ? <span style={{ color: 'var(--text)', fontWeight: 600 }}> {week_stats.tonnage.toLocaleString()}кг</span>
+            : <span> vs прошлая</span>
+          }
         </div>
       )}
 

@@ -702,6 +702,11 @@ async def program_endpoint(x_init_data: str = Header(alias="x-init-data")):
     next_day_type = next_day_types[0] if next_day_types else None
     next_exercises = await get_user_program(user_id, next_week_type, next_day_type) if next_day_type else []
 
+    days_in_week = len(day_types)
+    remaining_days_this_week = max(0, days_in_week - current_day_index)
+    remaining_full_weeks = max(0, total_weeks - week_in_cycle)
+    days_until_next_cycle = remaining_days_this_week + remaining_full_weeks * days_in_week
+
     return {
         "week_type": week_type,
         "week_type_label": WEEK_TYPES.get(week_type, week_type),
@@ -709,7 +714,8 @@ async def program_endpoint(x_init_data: str = Header(alias="x-init-data")):
         "week_in_cycle": week_in_cycle,
         "total_weeks_in_cycle": total_weeks,
         "completed_days": current_day_index,
-        "total_days": len(day_types),
+        "total_days": days_in_week,
+        "days_until_next_cycle": days_until_next_cycle,
         "days": days,
         "next_week": {
             "week_type": next_week_type,
@@ -1001,6 +1007,9 @@ async def profile_get(x_init_data: str = Header(alias="x-init-data")):
         raise HTTPException(status_code=404, detail="User not found")
     stats = await get_all_time_stats(user_id)
     avg_rpe = await get_avg_rpe_recent(user_id, limit=10)
+    nutr_avg = await get_nutrition_week_avg(user_id)
+    utc_offset = user.get("utc_offset") or 0
+    tz_str = f"UTC+{utc_offset}" if utc_offset >= 0 else f"UTC{utc_offset}"
     return {
         "name": user["name"],
         "weight": user["weight"],
@@ -1017,6 +1026,9 @@ async def profile_get(x_init_data: str = Header(alias="x-init-data")):
         "goal_fat": user["goal_fat"],
         "total_workouts": stats["total_workouts"],
         "avg_rpe": round(avg_rpe, 1) if avg_rpe else 0,
+        "nutrition_days_tracked": nutr_avg["days_tracked"],
+        "utc_offset": utc_offset,
+        "timezone_label": tz_str,
     }
 
 

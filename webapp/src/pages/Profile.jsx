@@ -54,15 +54,24 @@ function SectionTitle({ children }) {
   return <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--hint)', textTransform: 'uppercase', letterSpacing: 0.5, padding: '16px 16px 6px' }}>{children}</div>
 }
 
-function StaticRow({ icon, iconBg, label, value, danger }) {
+function StaticRow({ icon, iconBg, label, value, danger, onClick }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px' }}>
+    <div
+      style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: onClick ? 'pointer' : 'default' }}
+      onClick={onClick}
+    >
       <div style={{ width: 32, height: 32, borderRadius: 8, background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>{icon}</div>
       <div style={{ flex: 1, fontSize: 15, color: danger ? 'var(--red)' : 'var(--text)' }}>{label}</div>
       {value && <div style={{ fontSize: 15, color: 'var(--hint)' }}>{value}</div>}
-      <div style={{ fontSize: 12, color: danger ? 'var(--red)' : 'var(--bg4)' }}>›</div>
+      {onClick && <div style={{ fontSize: 12, color: danger ? 'var(--red)' : 'var(--bg4)' }}>›</div>}
     </div>
   )
+}
+
+function pluralDays(n) {
+  if (n === 1) return `${n} день`
+  if (n >= 2 && n <= 4) return `${n} дня`
+  return `${n} дней`
 }
 
 export default function Profile({ onBack }) {
@@ -133,12 +142,12 @@ export default function Profile({ onBack }) {
             <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 2 }}>тренировки</div>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--green)' }}>{data.weight} кг</div>
-            <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 2 }}>вес тела</div>
-          </div>
-          <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--orange)' }}>{data.avg_rpe || '—'}</div>
             <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 2 }}>средний RPE</div>
+          </div>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--blue)' }}>{data.nutrition_days_tracked ?? '—'}</div>
+            <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 2 }}>дней питания</div>
           </div>
         </div>
       </div>
@@ -172,7 +181,9 @@ export default function Profile({ onBack }) {
         <Divider />
         <StaticRow icon="🏋️" iconBg="rgba(48,209,88,.12)" label="Оборудование" value={data.equipment_label} />
         <Divider />
-        <StaticRow icon="📅" iconBg="rgba(10,132,255,.12)" label="Тренировок в неделю" value={`${data.days_per_week} дня`} />
+        <StaticRow icon="📅" iconBg="rgba(10,132,255,.12)" label="Тренировок в неделю" value={pluralDays(data.days_per_week)} />
+        <Divider />
+        <StaticRow icon="🕐" iconBg="rgba(100,100,100,.12)" label="Часовой пояс" value={data.timezone_label || '—'} />
         <Divider />
         <div
           style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', cursor: 'pointer' }}

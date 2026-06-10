@@ -165,13 +165,20 @@ export default function Program({ onGoWorkout }) {
           justifyContent: 'space-between',
         }}>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>Следующий тип недели</div>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>Следующий цикл</div>
             <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 2 }}>
               {data.next_week.week_type_label} — {data.next_week.day_label}
             </div>
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--purple)' }}>
-            {data.next_week.week_type_label}
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--purple)' }}>
+              {data.next_week.week_type_label}
+            </div>
+            {data.days_until_next_cycle > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--hint)', marginTop: 2 }}>
+                через {data.days_until_next_cycle} дн.
+              </div>
+            )}
           </div>
         </div>
       )}
