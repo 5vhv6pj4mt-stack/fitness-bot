@@ -151,7 +151,7 @@ export default function Nutrition() {
   if (loading) return <div className="spinner">Загружаем питание...</div>
   if (err) return <div className="spinner" style={{ color: '#f87171' }}>{err}</div>
 
-  const { entries = [], totals, goals } = data || {}
+  const { entries = [], meal_groups = [], totals, goals } = data || {}
   if (!totals || !goals) {
     return <div className="spinner" style={{ color: '#f87171' }}>Ошибка загрузки данных</div>
   }
@@ -207,39 +207,47 @@ export default function Nutrition() {
         </div>
       </div>
 
-      {/* Список за день */}
-      {entries.length > 0 ? (
-        <div className="card">
-          <div className="section-title">Сегодня</div>
-          {entries.map((e) => (
-            <div key={e.id} className="food-entry">
-              <div className="food-entry-body">
-                <div className="food-entry-name">{e.description}</div>
-                <div className="food-entry-kcal">
-                  {e.calories} ккал · Б:{e.protein} У:{e.carbs} Ж:{e.fat}
+      {/* Список за день — сгруппировано по приёмам пищи */}
+      {meal_groups.length > 0 ? (
+        <>
+          {meal_groups.map((group) => (
+            <div key={group.meal_type} className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div className="section-title" style={{ marginBottom: 0 }}>
+                  {group.icon} {group.label}
                 </div>
+                <div style={{ fontSize: 13, color: 'var(--hint)' }}>{Math.round(group.calories)} ккал</div>
               </div>
-              <div className="food-entry-right">
-                <div className="food-entry-time">{e.time}</div>
-                <button
-                  className="food-entry-more"
-                  onClick={() => { haptic('light'); setSheetEntry(e) }}
-                >
-                  ⋮
-                </button>
-              </div>
+              {group.entries.map((e) => (
+                <div key={e.id} className="food-entry">
+                  <div className="food-entry-body">
+                    <div className="food-entry-name">{e.description}</div>
+                    <div className="food-entry-kcal">
+                      {e.calories} ккал · Б:{e.protein} У:{e.carbs} Ж:{e.fat}
+                    </div>
+                  </div>
+                  <div className="food-entry-right">
+                    <div className="food-entry-time">{e.time}</div>
+                    <button
+                      className="food-entry-more"
+                      onClick={() => { haptic('light'); setSheetEntry(e) }}
+                    >
+                      ⋮
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           ))}
-          <div style={{
+          <div className="card" style={{
             display: 'flex', justifyContent: 'space-between',
-            paddingTop: 10, marginTop: 4,
-            borderTop: '1px solid rgba(255,255,255,0.08)',
+            padding: '12px 16px',
             fontSize: 14, fontWeight: 600,
           }}>
-            <span>ИТОГО</span>
+            <span>ИТОГО за день</span>
             <span>{Math.round(totals.calories)} ккал</span>
           </div>
-        </div>
+        </>
       ) : (
         <div className="card" style={{ textAlign: 'center', color: 'var(--hint)', padding: '24px 16px' }}>
           Ещё ничего не записано. Добавь первый приём пищи!
