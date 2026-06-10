@@ -1,8 +1,9 @@
 from aiogram import Router, F
+from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
-from database.db import get_user, update_user, get_meal_reminders, set_meal_reminder
+from database.db import get_user, update_user, get_meal_reminders, set_meal_reminder, save_user_program, delete_user_program
 from keyboards.keyboards import main_menu
 from states.states import Setup, ReminderSettings
 from handlers.nav import send_nav, track_msg
@@ -199,6 +200,77 @@ async def update_weight(message: Message):
         await message.answer(f"✅ Вес обновлён: {weight} кг")
     except (ValueError, IndexError):
         await message.answer("Формат: <code>вес 75.5</code>", parse_mode="HTML")
+
+
+@router.message(Command("reset"))
+async def reset_command(message: Message):
+    await message.answer(
+        "⚠️ <b>Сброс программы тренировок</b>\n\n"
+        "Это обнулит счётчик недели и перегенерирует программу по твоему профилю.\n"
+        "Данные о тренировках и питании <b>не удаляются</b>.\n\n"
+        "Продолжить?",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Да, сбросить", callback_data="reset_confirm"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="reset_cancel"),
+        ]]),
+    )
+
+
+@router.callback_query(F.data == "reset_cancel")
+async def cb_reset_cancel(callback: CallbackQuery):
+    await callback.message.edit_text("Отменено.")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "reset_confirm")
+async def cb_reset_confirm(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    await callback.message.edit_text("⏳ Сбрасываю программу...")
+    await callback.answer()
+
+    PRESET_USER_ID = 311739548
+
+    try:
+        if user_id == PRESET_USER_ID:
+            from database.program_data import PROGRAM
+            program_flat = []
+            for week_type, days in PROGRAM.items():
+                for day_type, exercises in days.items():
+                    for i, ex in enumerate(exercises):
+                        program_flat.append({
+                            "week_type": week_type, "day_type": day_type, "order_num": i,
+                            "exercise": ex["exercise"], "sets": ex["sets"],
+                            "reps_range": ex["reps"], "weight": ex["weight"],
+                            "rpe_range": ex["rpe"], "rest": ex["rest"],
+                        })
+            await save_user_program(user_id, program_flat)
+            await update_user(user_id, current_week=1, current_week_type="strength", current_day_index=0)
+            await callback.message.edit_text(
+                "✅ <b>Программа сброшена!</b>\n\nНеделя 1 · Силовая · День 1\nЖми <b>Тренировка</b> чтобы начать!",
+                parse_mode="HTML",
+            )
+        else:
+            user = await get_user(user_id)
+            await callback.message.edit_text("⏳ Генерирую программу через AI... (10–20 сек)")
+            from services.ai_service import generate_program
+            program, nutrition = await generate_program(user)
+            await save_user_program(user_id, program)
+            week_types = list(dict.fromkeys(ex["week_type"] for ex in program))
+            await update_user(
+                user_id,
+                goal_calories=nutrition["calories"], goal_protein=nutrition["protein"],
+                goal_carbs=nutrition["carbs"], goal_fat=nutrition["fat"],
+                current_week=1, current_week_type=week_types[0], current_day_index=0,
+            )
+            await callback.message.edit_text(
+                f"✅ <b>Программа перегенерирована!</b>\n\n"
+                f"🔥 {nutrition['calories']} ккал · 🥩 {nutrition['protein']}г белка\n\n"
+                f"Жми <b>Тренировка</b> чтобы начать!",
+                parse_mode="HTML",
+            )
+    except Exception as e:
+        await callback.message.edit_text(f"⚠️ Ошибка: {e}\n\nПопробуй ещё раз через /reset")
 
 
 @router.message(F.text.lower().regexp(r"^tz\s*[+-]\d+$"))

@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import BotCommand, MenuButtonCommands
+from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
 
 from config import BOT_TOKEN
 from database.db import init_db, get_all_onboarded_users, get_meal_reminders
@@ -58,9 +58,13 @@ async def set_bot_commands(bot: Bot):
         BotCommand(command="summary",  description="📋 Сводка на сегодня"),
         BotCommand(command="stats",    description="📊 Статистика"),
         BotCommand(command="settings", description="⚙️ Настройки"),
+        BotCommand(command="reset",    description="🔄 Сбросить и перегенерировать программу"),
     ]
     await bot.set_my_commands(commands)
-    await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(
+        text="Открыть",
+        web_app=WebAppInfo(url="https://oracle-bot-bot.duckdns.org/fitness/"),
+    ))
 
 
 async def main():
