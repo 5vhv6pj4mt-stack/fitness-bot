@@ -1,0 +1,18 @@
+[Unit]
+Description=Fitness Mini App API
+After=network.target fitness-bot.service
+Wants=fitness-bot.service
+
+[Service]
+Type=simple
+User=oracle
+WorkingDirectory=/home/oracle/fitness-bot
+EnvironmentFile=/home/oracle/fitness-bot/.env
+ExecStart=/home/oracle/fitness-bot/venv/bin/uvicorn webapp_api:app --host 127.0.0.1 --port 8001 --workers 1
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/oracle/fitness-bot/webapp_api.log
+StandardError=append:/home/oracle/fitness-bot/webapp_api.log
+
+[Install]
+WantedBy=multi-user.target

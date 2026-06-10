@@ -25,7 +25,7 @@ from database.db import (
     get_exercise_weight_history, get_user_exercises,
 )
 
-app = FastAPI()
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,6 +33,7 @@ app.add_middleware(
         "https://web.telegram.org",
         "https://webk.telegram.org",
         "https://webz.telegram.org",
+        "https://oracle-bot-bot.duckdns.org",
     ],
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["x-init-data", "content-type"],
@@ -54,29 +55,34 @@ def today() -> str:
     return date.today().isoformat()
 
 
+@app.get("/api/health")
+async def health():
+    try:
+        import aiosqlite as _aio
+        async with _aio.connect(DB_PATH) as db:
+            await db.execute("SELECT 1")
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="DB unavailable")
+    return {"status": "ok"}
+
+
 def validate_init_data(init_data: str) -> int:
     """Проверяет Telegram initData и возвращает user_id."""
-    logger = logging.getLogger("validate")
-    logger.info("initData length: %d", len(init_data))
-    logger.info("initData preview: %s", init_data[:100])
-
     if not init_data:
         raise HTTPException(status_code=401, detail="Empty initData")
 
     params = dict(parse_qsl(init_data, keep_blank_values=True))
     received_hash = params.pop("hash", "")
-    logger.info("hash: %s, keys: %s", received_hash[:16] if received_hash else "MISSING", list(params.keys()))
 
     data_check = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
     secret_key = hmac.new(b"WebAppData", BOT_TOKEN.encode(), hashlib.sha256).digest()
     expected = hmac.new(secret_key, data_check.encode(), hashlib.sha256).hexdigest()
-    logger.info("expected: %s, received: %s, match: %s", expected[:16], received_hash[:16] if received_hash else "NONE", expected == received_hash)
 
     if not hmac.compare_digest(expected, received_hash):
         raise HTTPException(status_code=401, detail="Invalid initData")
 
     auth_date = int(params.get("auth_date", 0))
-    if abs(int(time.time()) - auth_date) > 86400:
+    if abs(int(time.time()) - auth_date) > 3600:
         raise HTTPException(status_code=401, detail="initData expired")
 
     user_data = json.loads(params.get("user", "{}"))
@@ -304,7 +310,7 @@ async def nutrition_today(x_init_data: str = Header(alias="x-init-data")):
 
 
 class LogFoodRequest(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=500)
 
 
 @app.post("/api/nutrition/log")
@@ -328,7 +334,7 @@ async def log_food_endpoint(body: LogFoodRequest, x_init_data: str = Header(alia
 
 
 class UpdateFoodRequest(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=500)
 
 
 @app.patch("/api/nutrition/{entry_id}")
