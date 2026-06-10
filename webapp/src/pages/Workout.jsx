@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useRef, useState, useCallback, memo } from 'react'
 import { api } from '../api'
 import { haptic } from '../tg'
+import { playSound, getRestSound } from '../sounds'
 
 // ── Elapsed timer ────────────────────────────────────────────────────────────
 function ElapsedTimer({ startedAt }) {
@@ -57,14 +58,22 @@ function ExerciseInfoPanel({ exercise }) {
           }}
         />
       )}
-      <div style={{
-        background: 'var(--bg)', borderRadius: 10, padding: '8px 12px',
-        fontSize: 13, lineHeight: 1.55,
-      }}>
+      <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '8px 12px' }}>
         {info.loading ? (
-          <span style={{ color: 'var(--hint)' }}>Загружаем технику...</span>
+          <div style={{ color: 'var(--hint)', fontSize: 13 }}>Загружаем технику...</div>
         ) : (
-          <span style={{ color: 'var(--text)' }}>💡 {info.technique}</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {(info.technique || '').split('\n').filter(Boolean).map((line, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, fontSize: 13, lineHeight: 1.5 }}>
+                <span style={{ color: 'var(--accent)', fontWeight: 700, flexShrink: 0, minWidth: 18 }}>
+                  {line.match(/^\d+\./) ? line.match(/^\d+\./)[0] : '•'}
+                </span>
+                <span style={{ color: 'var(--text)' }}>
+                  {line.replace(/^\d+\.\s*/, '')}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -114,7 +123,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
     setRestRemaining(secs)
     restRef.current = setInterval(() => {
       setRestRemaining((r) => {
-        if (r <= 1) { clearInterval(restRef.current); haptic('heavy'); return 0 }
+        if (r <= 1) { clearInterval(restRef.current); haptic('heavy'); playSound(getRestSound()); return 0 }
         if (r === 11) haptic('light')
         return r - 1
       })

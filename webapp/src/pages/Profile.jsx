@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import { haptic, setThemeOverride, getThemeOverride } from '../tg'
+import { playSound, getRestSound, setRestSound, SOUND_OPTIONS } from '../sounds'
 
 const MONTHS_RU = ['январе','феврале','марте','апреле','мае','июне','июле','августе','сентябре','октябре','ноябре','декабре']
 const MONTHS_SHORT = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек']
@@ -104,6 +105,7 @@ export default function Profile({ onBack }) {
     if (override) return override === 'dark'
     return !document.documentElement.classList.contains('tg-light')
   })
+  const [restSound, setRestSoundState] = useState(() => getRestSound())
 
   const showToast = (msg, isError = false) => {
     setToast({ msg, isError })
@@ -293,6 +295,35 @@ export default function Profile({ onBack }) {
             setDarkMode(v)
             setThemeOverride(v ? 'dark' : 'light')
           }} />
+        </div>
+        <div style={{ padding: '12px 16px', borderTop: '1px solid var(--sep)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
+            <div className="sr-icon" style={{ background: 'rgba(255,159,10,.12)', marginRight: 12 }}>🔔</div>
+            <div className="sr-label">Звук конца отдыха</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, paddingLeft: 44 }}>
+            {SOUND_OPTIONS.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => {
+                  haptic('light')
+                  setRestSound(s.id)
+                  setRestSoundState(s.id)
+                  playSound(s.id)
+                }}
+                style={{
+                  flex: 1, padding: '8px 4px', borderRadius: 10, fontSize: 12, fontWeight: 600,
+                  border: restSound === s.id ? '2px solid var(--accent)' : '2px solid var(--sep)',
+                  background: restSound === s.id ? 'rgba(10,132,255,.12)' : 'var(--bg3)',
+                  color: restSound === s.id ? 'var(--accent)' : 'var(--text)',
+                  cursor: 'pointer', textAlign: 'center', lineHeight: 1.3,
+                }}
+              >
+                <div>{s.label}</div>
+                <div style={{ fontSize: 10, color: 'var(--hint)', marginTop: 2 }}>{s.desc}</div>
+              </button>
+            ))}
+          </div>
         </div>
         <div className="sr" onClick={() => { haptic('light'); window.Telegram?.WebApp?.openTelegramLink('https://t.me/stat_sila_bot') }}>
           <div className="sr-icon" style={{ background: 'rgba(48,209,88,.12)' }}>🔗</div>
