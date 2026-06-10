@@ -2,6 +2,25 @@ import { useEffect, useReducer, useRef, useState, useCallback, memo } from 'reac
 import { api } from '../api'
 import { haptic } from '../tg'
 
+// ── Elapsed timer ────────────────────────────────────────────────────────────
+function ElapsedTimer({ startedAt }) {
+  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - startedAt) / 1000))
+
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [startedAt])
+
+  const h = Math.floor(elapsed / 3600)
+  const m = Math.floor((elapsed % 3600) / 60)
+  const s = elapsed % 60
+  const fmt = h > 0
+    ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+    : `${m}:${String(s).padStart(2, '0')}`
+
+  return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt}</span>
+}
+
 // ── Rest timer ────────────────────────────────────────────────────────────────
 function RestTimer({ onDone }) {
   const [selected, setSelected] = useState(null)
@@ -379,6 +398,7 @@ const initial = {
   showRest: false,
   finishResult: null,
   finishing: false,
+  startedAt: null,
 }
 
 function reducer(state, action) {
@@ -386,6 +406,9 @@ function reducer(state, action) {
     case 'PLAN_OK': {
       const aw = action.plan.active_workout
       if (aw) {
+        const startedAt = aw.created_at
+          ? new Date(aw.created_at.replace(' ', 'T') + 'Z').getTime()
+          : Date.now()
         return {
           ...state,
           plan: action.plan,
@@ -396,6 +419,7 @@ function reducer(state, action) {
           setIndex: aw.set_index ?? 0,
           loggedSets: [],
           showRest: false,
+          startedAt,
         }
       }
       return { ...state, plan: action.plan, loading: false }
@@ -409,6 +433,7 @@ function reducer(state, action) {
         exercises: action.exercises,
         exIndex: 0, setIndex: 0,
         loggedSets: [], showRest: false,
+        startedAt: Date.now(),
       }
     case 'LOG':
       return { ...state, loggedSets: [...state.loggedSets, action.set] }
@@ -425,7 +450,7 @@ function reducer(state, action) {
     case 'FINISH_ERR':
       return { ...state, finishing: false, err: action.err }
     case 'BACK':
-      return { ...state, finishResult: null, workoutId: null, loading: true, loggedSets: [] }
+      return { ...state, finishResult: null, workoutId: null, loading: true, loggedSets: [], startedAt: null }
     case 'RELOAD_OK':
       return { ...state, plan: action.plan, loading: false }
     default:
@@ -436,7 +461,7 @@ function reducer(state, action) {
 // ── Main Workout page ─────────────────────────────────────────────────────────
 export default function Workout({ onGoProgress }) {
   const [state, dispatch] = useReducer(reducer, initial)
-  const { plan, loading, err, workoutId, exercises, exIndex, setIndex, loggedSets, showRest, finishResult, finishing } = state
+  const { plan, loading, err, workoutId, exercises, exIndex, setIndex, loggedSets, showRest, finishResult, finishing, startedAt } = state
   const finishingRef = useRef(false)
 
   useEffect(() => {
@@ -534,7 +559,14 @@ export default function Workout({ onGoProgress }) {
       <div style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
           <div style={{ fontSize: 16, fontWeight: 700 }}>{plan.day_label}</div>
-          <span className="badge">{progress}%</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {startedAt && (
+              <span style={{ fontSize: 13, color: 'var(--hint)', fontWeight: 600 }}>
+                ⏱ <ElapsedTimer startedAt={startedAt} />
+              </span>
+            )}
+            <span className="badge">{progress}%</span>
+          </div>
         </div>
         <div className="prog-track">
           <div className="prog-fill" style={{ width: `${progress}%`, background: 'var(--accent)' }} />
