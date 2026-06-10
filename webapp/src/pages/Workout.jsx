@@ -262,6 +262,110 @@ function FinishScreen({ result, onBack, onGoProgress }) {
   )
 }
 
+// ── Plan view ────────────────────────────────────────────────────────────────
+function ExerciseRow({ ex, weekType, dayType, onWeightSaved }) {
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState(ex.weight || 0)
+  const [saving, setSaving] = useState(false)
+
+  const save = async () => {
+    const w = parseFloat(val)
+    if (!w || w <= 0) return
+    setSaving(true)
+    haptic('medium')
+    try {
+      await api.updateExerciseWeight(ex.exercise, weekType, dayType, w)
+      onWeightSaved(ex.exercise, w)
+      setEditing(false)
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{ex.exercise}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13, color: 'var(--hint)' }}>
+          {ex.sets}×{ex.reps_range} · RPE {ex.rpe_range} · {ex.rest}
+        </span>
+        {editing ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <input
+              type="number"
+              value={val}
+              onChange={e => setVal(e.target.value)}
+              step="2.5"
+              min="0"
+              style={{
+                width: 70, padding: '4px 8px', borderRadius: 8, border: '1px solid var(--accent)',
+                background: 'var(--bg)', color: 'var(--text)', fontSize: 14, fontWeight: 700,
+              }}
+              autoFocus
+            />
+            <span style={{ fontSize: 13, color: 'var(--hint)' }}>кг</span>
+            <button
+              onClick={save} disabled={saving}
+              style={{ padding: '4px 10px', borderRadius: 8, background: 'var(--accent)', color: 'var(--accent-text)', fontSize: 13, fontWeight: 600 }}
+            >{saving ? '...' : '✓'}</button>
+            <button
+              onClick={() => { setEditing(false); setVal(ex.weight || 0) }}
+              style={{ padding: '4px 8px', borderRadius: 8, background: 'var(--bg3)', color: 'var(--hint)', fontSize: 13 }}
+            >✕</button>
+          </div>
+        ) : (
+          <button
+            onClick={() => { haptic('light'); setEditing(true) }}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 8,
+              background: 'var(--bg2)', border: 'none', cursor: 'pointer' }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+              {ex.weight > 0 ? `${ex.weight}кг` : 'свой вес'}
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--hint)' }}>✏️</span>
+          </button>
+        )}
+        {ex.suggested_weight && ex.suggested_weight !== ex.weight && (
+          <span style={{ fontSize: 12, color: 'var(--green)' }}>→ {ex.suggested_weight}кг</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function PlanView({ plan, onStart }) {
+  const [exercises, setExercises] = useState(plan.exercises)
+
+  const handleWeightSaved = (exName, newWeight) => {
+    setExercises(prev => prev.map(e => e.exercise === exName ? { ...e, weight: newWeight } : e))
+  }
+
+  return (
+    <div className="page">
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 22, fontWeight: 700 }}>💪 Тренировка</div>
+        <div style={{ fontSize: 14, color: 'var(--hint)', marginTop: 2 }}>
+          {plan.day_label} · {plan.week_label} · Неделя {plan.week_num}
+        </div>
+      </div>
+
+      <div className="card">
+        {exercises.map((ex, i) => (
+          <ExerciseRow
+            key={i}
+            ex={ex}
+            weekType={plan.week_type}
+            dayType={plan.day_type}
+            onWeightSaved={handleWeightSaved}
+          />
+        ))}
+      </div>
+
+      <button className="btn-primary" style={{ marginTop: 4 }} onClick={onStart}>
+        ▶️ Начать тренировку
+      </button>
+    </div>
+  )
+}
+
 // ── Reducer ───────────────────────────────────────────────────────────────────
 const initial = {
   plan: null,
@@ -415,41 +519,7 @@ export default function Workout({ onGoProgress }) {
 
   // Plan view (not started)
   if (!workoutId) {
-    return (
-      <div className="page">
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 22, fontWeight: 700 }}>💪 Тренировка</div>
-          <div style={{ fontSize: 14, color: 'var(--hint)', marginTop: 2 }}>
-            {plan.day_label} · {plan.week_label} · Неделя {plan.week_num}
-          </div>
-        </div>
-
-        <div className="card">
-          {plan.exercises.map((ex, i) => (
-            <div key={i} style={{
-              padding: '10px 0',
-              borderBottom: i < plan.exercises.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
-            }}>
-              <div style={{ fontWeight: 600, marginBottom: 2 }}>
-                {i + 1}. {ex.exercise}
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--hint)' }}>
-                {ex.sets}×{ex.reps_range} @{' '}
-                {ex.weight > 0 ? `${ex.weight}кг` : 'свой вес'} · RPE {ex.rpe_range} · {ex.rest}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <button
-          className="btn-primary"
-          style={{ marginTop: 4 }}
-          onClick={handleStart}
-        >
-          ▶️ Начать тренировку
-        </button>
-      </div>
-    )
+    return <PlanView plan={plan} onStart={handleStart} />
   }
 
   // Active workout

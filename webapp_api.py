@@ -33,6 +33,7 @@ from database.db import (
     log_weight, get_weight_history,
     log_measurements, get_latest_measurements, get_measurements_month_ago,
     get_week_workouts, get_week_nutrition_avg,
+    update_exercise_weight,
 )
 
 from contextlib import asynccontextmanager
@@ -402,6 +403,23 @@ async def workout_analysis_endpoint(
 
 
 # ── Nutrition ─────────────────────────────────────────────────────────────────
+
+class ExerciseWeightRequest(BaseModel):
+    exercise: str
+    week_type: str
+    day_type: str
+    weight: float = Field(gt=0, lt=1000)
+
+
+@app.patch("/api/workout/exercise-weight")
+async def update_exercise_weight_endpoint(
+    body: ExerciseWeightRequest,
+    x_init_data: str = Header(alias="x-init-data"),
+):
+    user_id = validate_init_data(x_init_data)
+    await update_exercise_weight(user_id, body.week_type, body.day_type, body.exercise, body.weight)
+    return {"ok": True, "weight": body.weight}
+
 
 _MEAL_ORDER = ['breakfast', 'lunch', 'snack', 'dinner', 'other']
 _MEAL_META = {

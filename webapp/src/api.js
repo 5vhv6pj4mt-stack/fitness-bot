@@ -53,6 +53,8 @@ export const api = {
   bodyData: () => req('/body'),
   logWeight: (weight) => req('/body/weight', { method: 'POST', body: JSON.stringify({ weight }) }),
   logMeasurements: (data) => req('/body/measurements', { method: 'POST', body: JSON.stringify(data) }),
+  updateExerciseWeight: (exercise, weekType, dayType, weight) =>
+    req('/workout/exercise-weight', { method: 'PATCH', body: JSON.stringify({ exercise, week_type: weekType, day_type: dayType, weight }) }),
   weekReport: () => req('/progress/week'),
   progress: () => req('/progress'),
   exerciseHistory: (name) => req(`/progress/exercise?name=${encodeURIComponent(name)}`),
