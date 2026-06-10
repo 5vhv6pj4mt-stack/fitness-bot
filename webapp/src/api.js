@@ -1,21 +1,22 @@
 import { getInitData } from './tg'
 
 const BASE = '/fitness/api'
-const TIMEOUT_MS = 10000
+const TIMEOUT_MS = 15000
 
 async function req(path, options = {}) {
   const initData = getInitData()
+  const isFormData = options.body instanceof FormData
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
   try {
+    const headers = { 'x-init-data': initData }
+    if (!isFormData) headers['Content-Type'] = 'application/json'
+    Object.assign(headers, options.headers || {})
+
     const res = await fetch(BASE + path, {
       ...options,
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-init-data': initData,
-        ...(options.headers || {}),
-      },
+      headers,
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }))
@@ -45,8 +46,8 @@ export const api = {
   programData: () => req('/program'),
   nutritionTemplates: () => req('/nutrition/templates'),
   logTemplate: (text) => req('/nutrition/log-template', { method: 'POST', body: JSON.stringify({ text }) }),
-  logPhoto: (formData) => req('/nutrition/log-photo', { method: 'POST', body: formData, headers: {} }),
-  logVoice: (formData) => req('/nutrition/log-voice', { method: 'POST', body: formData, headers: {} }),
+  logPhoto: (formData) => req('/nutrition/log-photo', { method: 'POST', body: formData }),
+  logVoice: (formData) => req('/nutrition/log-voice', { method: 'POST', body: formData }),
   waterToday: () => req('/water/today'),
   waterAdd: () => req('/water/add', { method: 'POST', body: '{}' }),
   progress: () => req('/progress'),

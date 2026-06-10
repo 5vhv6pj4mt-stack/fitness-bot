@@ -1,23 +1,28 @@
-export const tg = window.Telegram?.WebApp || null
+// Telegram WebApp — with fallback for cases when the bridge loads late
+function getTg() {
+  return window.Telegram?.WebApp || null
+}
 
 export function getInitData() {
-  return tg?.initData || ''
+  return getTg()?.initData || ''
 }
 
 export function getUser() {
-  return tg?.initDataUnsafe?.user || null
+  return getTg()?.initDataUnsafe?.user || null
 }
 
 export function ready() {
+  const tg = getTg()
   tg?.ready()
   tg?.expand()
 }
 
 export function haptic(type = 'light') {
-  tg?.HapticFeedback?.impactOccurred(type)
+  getTg()?.HapticFeedback?.impactOccurred(type)
 }
 
 export function showMainButton(text, onClick) {
+  const tg = getTg()
   if (!tg) return
   tg.MainButton.setText(text)
   tg.MainButton.onClick(onClick)
@@ -25,9 +30,9 @@ export function showMainButton(text, onClick) {
 }
 
 export function hideMainButton() {
-  tg?.MainButton?.hide()
+  getTg()?.MainButton?.hide()
 }
 
 export function getTheme() {
-  return tg?.themeParams || {}
+  return getTg()?.themeParams || {}
 }
