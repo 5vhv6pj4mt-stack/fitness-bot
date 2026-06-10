@@ -73,6 +73,43 @@ function FoodSheet({ entry, onClose, onDelete, onUpdate }) {
   )
 }
 
+// ── Quick chips ───────────────────────────────────────────────────────────────
+function QuickChips({ onSelect }) {
+  const [templates, setTemplates] = useState([])
+
+  useEffect(() => {
+    api.nutritionTemplates()
+      .then((r) => setTemplates(r.templates || []))
+      .catch(() => {})
+  }, [])
+
+  if (!templates.length) return null
+
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+      {templates.map((t) => (
+        <button
+          key={t.description}
+          onClick={() => onSelect(t.description)}
+          style={{
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 20,
+            padding: '5px 12px',
+            fontSize: 13,
+            color: 'var(--text)',
+            cursor: 'pointer',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {t.description}
+          <span style={{ marginLeft: 6, color: 'var(--hint)', fontSize: 11 }}>{t.calories} ккал</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ── Main Nutrition page ───────────────────────────────────────────────────────
 export default function Nutrition() {
   const [data, setData] = useState(null)
@@ -184,6 +221,7 @@ export default function Nutrition() {
       {/* Добавить еду */}
       <div className="card">
         <div className="section-title">Добавить приём пищи</div>
+        <QuickChips onSelect={(text) => { setFoodText(text); inputRef.current?.focus() }} />
         <div className="food-input-row">
           <input
             ref={inputRef}

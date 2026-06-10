@@ -25,6 +25,7 @@ from database.db import (
     get_exercise_weight_history, get_user_exercises,
     save_workout_analysis, get_workout_analysis,
     get_last_workout_by_day,
+    get_frequent_foods,
 )
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -331,6 +332,24 @@ async def workout_analysis_endpoint(
 
 # ── Nutrition ─────────────────────────────────────────────────────────────────
 
+_MEAL_ORDER = ['breakfast', 'lunch', 'snack', 'dinner', 'other']
+_MEAL_META = {
+    'breakfast': {'icon': '🌅', 'label': 'Завтрак'},
+    'lunch':     {'icon': '☀️',  'label': 'Обед'},
+    'snack':     {'icon': '🌆', 'label': 'Перекус'},
+    'dinner':    {'icon': '🌙', 'label': 'Ужин'},
+    'other':     {'icon': '📦', 'label': 'Другое'},
+}
+
+def _detect_meal_type() -> str:
+    from datetime import datetime
+    hour = datetime.now().hour
+    if hour < 10:   return 'breakfast'
+    if hour < 14:   return 'lunch'
+    if hour < 18:   return 'snack'
+    return 'dinner'
+
+
 @app.get("/api/nutrition")
 async def nutrition_today(x_init_data: str = Header(alias="x-init-data")):
     user_id = validate_init_data(x_init_data)
@@ -338,22 +357,39 @@ async def nutrition_today(x_init_data: str = Header(alias="x-init-data")):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    entries = await get_day_food_entries(user_id, today())
+    raw_entries = await get_day_food_entries(user_id, today())
     totals = await get_day_nutrition(user_id, today())
 
+    groups: dict[str, list] = {}
+    for e in raw_entries:
+        mt = e.get("meal_type") or "other"
+        groups.setdefault(mt, []).append({
+            "id": e["id"],
+            "time": e["created_at"][11:16],
+            "description": e["description"],
+            "calories": round(e["calories"]),
+            "protein": round(e["protein"], 1),
+            "carbs": round(e["carbs"], 1),
+            "fat": round(e["fat"], 1),
+            "meal_type": mt,
+        })
+
+    meal_groups = []
+    for mt in _MEAL_ORDER:
+        if mt in groups:
+            meta = _MEAL_META[mt]
+            grp_entries = groups[mt]
+            meal_groups.append({
+                "meal_type": mt,
+                "icon": meta["icon"],
+                "label": meta["label"],
+                "calories": sum(e["calories"] for e in grp_entries),
+                "entries": grp_entries,
+            })
+
     return {
-        "entries": [
-            {
-                "id": e["id"],
-                "time": e["created_at"][11:16],
-                "description": e["description"],
-                "calories": round(e["calories"]),
-                "protein": round(e["protein"], 1),
-                "carbs": round(e["carbs"], 1),
-                "fat": round(e["fat"], 1),
-            }
-            for e in entries
-        ],
+        "entries": [e for g in meal_groups for e in g["entries"]],
+        "meal_groups": meal_groups,
         "totals": {k: round(v, 1) for k, v in totals.items()},
         "goals": {
             "calories": user["goal_calories"],
@@ -373,13 +409,16 @@ async def log_food_endpoint(body: LogFoodRequest, x_init_data: str = Header(alia
     user_id = validate_init_data(x_init_data)
     from services.ai_service import parse_food
     result = await parse_food(body.text)
+    meal_type = _detect_meal_type()
     entry_id = await log_food(
         user_id, today(),
         result.get("description", body.text[:100]),
-        result["calories"], result["protein"], result["carbs"], result["fat"]
+        result["calories"], result["protein"], result["carbs"], result["fat"],
+        meal_type=meal_type,
     )
     return {
         "id": entry_id,
+        "meal_type": meal_type,
         "description": result.get("description", body.text[:100]),
         "calories": round(result["calories"]),
         "protein": round(result["protein"], 1),
@@ -430,6 +469,37 @@ async def delete_food_endpoint(
         raise HTTPException(status_code=404, detail="Entry not found")
     await delete_food_entry(entry_id)
     return {"ok": True}
+
+
+@app.get("/api/nutrition/templates")
+async def nutrition_templates(x_init_data: str = Header(alias="x-init-data")):
+    user_id = validate_init_data(x_init_data)
+    foods = await get_frequent_foods(user_id, limit=10)
+    return {"templates": foods}
+
+
+@app.post("/api/nutrition/log-template")
+async def log_template(body: LogFoodRequest, x_init_data: str = Header(alias="x-init-data")):
+    """Log a food using a pre-parsed template (skip AI parsing, use stored КБЖУ)."""
+    user_id = validate_init_data(x_init_data)
+    from services.ai_service import parse_food
+    result = await parse_food(body.text)
+    meal_type = _detect_meal_type()
+    entry_id = await log_food(
+        user_id, today(),
+        result.get("description", body.text[:100]),
+        result["calories"], result["protein"], result["carbs"], result["fat"],
+        meal_type=meal_type,
+    )
+    return {
+        "id": entry_id,
+        "meal_type": meal_type,
+        "description": result.get("description", body.text[:100]),
+        "calories": round(result["calories"]),
+        "protein": round(result["protein"], 1),
+        "carbs": round(result["carbs"], 1),
+        "fat": round(result["fat"], 1),
+    }
 
 
 @app.get("/api/progress")

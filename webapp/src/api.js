@@ -40,6 +40,8 @@ export const api = {
   logFood: (text) => req('/nutrition/log', { method: 'POST', body: JSON.stringify({ text }) }),
   updateFood: (id, text) => req(`/nutrition/${id}`, { method: 'PATCH', body: JSON.stringify({ text }) }),
   deleteFood: (id) => req(`/nutrition/${id}`, { method: 'DELETE' }),
+  nutritionTemplates: () => req('/nutrition/templates'),
+  logTemplate: (text) => req('/nutrition/log-template', { method: 'POST', body: JSON.stringify({ text }) }),
   progress: () => req('/progress'),
   exerciseHistory: (name) => req(`/progress/exercise?name=${encodeURIComponent(name)}`),
   workoutAnalysis: (id) => req(`/workout/${id}/analysis`),

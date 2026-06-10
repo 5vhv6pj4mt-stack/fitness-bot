@@ -69,9 +69,15 @@ async def init_db():
                 protein REAL DEFAULT 0,
                 carbs REAL DEFAULT 0,
                 fat REAL DEFAULT 0,
+                meal_type TEXT DEFAULT 'other',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        try:
+            await db.execute("ALTER TABLE food_log ADD COLUMN meal_type TEXT DEFAULT 'other'")
+            await db.commit()
+        except Exception:
+            pass
         await db.execute("""
             CREATE TABLE IF NOT EXISTS workouts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -307,11 +313,12 @@ async def delete_user_program(user_id: int):
 
 
 async def log_food(user_id: int, date: str, description: str,
-                   calories: float, protein: float, carbs: float, fat: float) -> int:
+                   calories: float, protein: float, carbs: float, fat: float,
+                   meal_type: str = 'other') -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
-            "INSERT INTO food_log (user_id, date, description, calories, protein, carbs, fat) VALUES (?,?,?,?,?,?,?)",
-            (user_id, date, description, calories, protein, carbs, fat)
+            "INSERT INTO food_log (user_id, date, description, calories, protein, carbs, fat, meal_type) VALUES (?,?,?,?,?,?,?,?)",
+            (user_id, date, description, calories, protein, carbs, fat, meal_type)
         )
         await db.commit()
         return cur.lastrowid
@@ -638,6 +645,29 @@ async def delete_food_entry(entry_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM food_log WHERE id=?", (entry_id,))
         await db.commit()
+
+
+async def get_frequent_foods(user_id: int, limit: int = 10) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """
+            SELECT description,
+                   ROUND(AVG(calories)) as calories,
+                   ROUND(AVG(protein), 1) as protein,
+                   ROUND(AVG(carbs), 1) as carbs,
+                   ROUND(AVG(fat), 1) as fat,
+                   COUNT(*) as freq
+            FROM food_log
+            WHERE user_id=?
+              AND date >= date('now', '-30 days')
+            GROUP BY lower(description)
+            ORDER BY freq DESC
+            LIMIT ?
+            """,
+            (user_id, limit),
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
 
 
 async def get_food_log_dates(user_id: int) -> list[str]:
