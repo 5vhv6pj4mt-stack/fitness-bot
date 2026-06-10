@@ -1,0 +1,9 @@
+aiogram==3.28.2
+aiosqlite==0.22.1
+anthropic==0.105.2
+fastapi==0.136.3
+groq==1.4.0
+pydantic==2.13.4
+pydantic_core==2.46.4
+python-multipart==0.0.32
+uvicorn==0.48.0
