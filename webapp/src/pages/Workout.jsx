@@ -32,6 +32,45 @@ function parseRestSecs(rest) {
   return s || 120
 }
 
+// ── Exercise info panel (image + brief technique) ─────────────────────────────
+function ExerciseInfoPanel({ exercise }) {
+  const [info, setInfo] = useState({ technique: null, image_url: null, loading: true })
+
+  useEffect(() => {
+    setInfo({ technique: null, image_url: null, loading: true })
+    api.exerciseInfo(exercise)
+      .then((d) => setInfo({ ...d, loading: false }))
+      .catch(() => setInfo({ technique: null, image_url: null, loading: false }))
+  }, [exercise])
+
+  if (!info.loading && !info.technique && !info.image_url) return null
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      {info.image_url && (
+        <img
+          src={info.image_url}
+          alt={exercise}
+          style={{
+            width: '100%', height: 140, objectFit: 'cover',
+            borderRadius: 10, marginBottom: 8, display: 'block',
+          }}
+        />
+      )}
+      <div style={{
+        background: 'var(--bg)', borderRadius: 10, padding: '8px 12px',
+        fontSize: 13, lineHeight: 1.55,
+      }}>
+        {info.loading ? (
+          <span style={{ color: 'var(--hint)' }}>Загружаем технику...</span>
+        ) : (
+          <span style={{ color: 'var(--text)' }}>💡 {info.technique}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Set input form ────────────────────────────────────────────────────────────
 const RPE_PILLS = [6.5, 7, 7.5, 8, 8.5, 9, 9.5]
 
@@ -100,6 +139,8 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
     <div className="card">
       <div className="ex-title">{exercise}</div>
       <div className="ex-meta">Подход {setNum}/{totalSets} · {repsRange} повт · RPE {rpeRange}</div>
+
+      <ExerciseInfoPanel exercise={exercise} />
 
       {lastWeight != null && (
         <div style={{

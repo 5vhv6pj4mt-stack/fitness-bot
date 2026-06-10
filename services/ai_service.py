@@ -344,6 +344,15 @@ async def get_exercise_technique(exercise: str) -> str:
     )
 
 
+async def get_exercise_technique_brief(exercise: str) -> str:
+    return await _ask(
+        _COACH_SYSTEM,
+        f"Дай 2-3 ключевых коучинговых кью для «{exercise}» — только самое важное для правильной техники. "
+        f"Без заголовков и форматирования, одним абзацем. Макс 3 предложения.",
+        max_tokens=120, temperature=0.2,
+    )
+
+
 async def get_exercise_gif(exercise_name: str) -> str | None:
     from config import RAPIDAPI_KEY
     try:

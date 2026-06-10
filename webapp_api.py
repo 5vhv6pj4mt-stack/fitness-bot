@@ -1205,3 +1205,26 @@ async def body_log_measurements(body: MeasurementsRequest, x_init_data: str = He
         raise HTTPException(status_code=400, detail="No measurements provided")
     await log_measurements(user_id, today(), **updates)
     return {"ok": True}
+
+
+_exercise_info_cache: dict[str, dict] = {}
+
+
+@app.get("/api/exercise/info")
+async def exercise_info_endpoint(name: str, x_init_data: str = Header(alias="x-init-data")):
+    validate_init_data(x_init_data)
+    if name in _exercise_info_cache:
+        return _exercise_info_cache[name]
+    import asyncio as _asyncio
+    from services.ai_service import get_exercise_technique_brief, get_exercise_gif
+    technique, image_url = await _asyncio.gather(
+        get_exercise_technique_brief(name),
+        get_exercise_gif(name),
+        return_exceptions=True,
+    )
+    result = {
+        "technique": technique if isinstance(technique, str) else None,
+        "image_url": image_url if isinstance(image_url, str) else None,
+    }
+    _exercise_info_cache[name] = result
+    return result
