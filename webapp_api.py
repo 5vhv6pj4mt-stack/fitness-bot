@@ -6,7 +6,7 @@ import time
 from datetime import date
 from urllib.parse import unquote, parse_qsl
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -23,6 +23,8 @@ from database.db import (
     get_tonnage_by_weeks, get_exercise_prs, get_all_time_stats,
     get_nutrition_week_avg, get_daily_nutrition_7d, get_avg_rpe_recent,
     get_exercise_weight_history, get_user_exercises,
+    save_workout_analysis, get_workout_analysis,
+    get_last_workout_by_day,
 )
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -231,9 +233,30 @@ class FinishWorkoutRequest(BaseModel):
     week_type: str = Field(max_length=50)
 
 
+async def _run_workout_analysis(workout_id: int, user: dict, day_type: str,
+                                week_type: str, sets: list[dict]):
+    try:
+        from services.ai_service import analyze_workout
+        prev = await get_last_workout_by_day(user["user_id"], day_type)
+        prev_text = ""
+        if prev:
+            prev_sets = await get_workout_sets(prev["id"])
+            prev_text = "\n".join(
+                f"  {s['exercise']}: {s['actual_weight']}кг × {s['reps']} повт., RPE {s['rpe']}"
+                for s in prev_sets
+            )
+        analysis = await analyze_workout(
+            day_type, week_type, sets, prev_text, user.get("weight", 70)
+        )
+        await save_workout_analysis(workout_id, analysis)
+    except Exception as e:
+        logging.error(f"AI workout analysis failed: {e}")
+
+
 @app.post("/api/workout/finish")
 async def finish_workout_endpoint(
     body: FinishWorkoutRequest,
+    background_tasks: BackgroundTasks,
     x_init_data: str = Header(alias="x-init-data"),
 ):
     user_id = validate_init_data(x_init_data)
@@ -246,6 +269,14 @@ async def finish_workout_endpoint(
 
     tonnage = sum(s.actual_weight * s.reps for s in body.sets)
     avg_rpe = sum(s.rpe for s in body.sets) / len(body.sets) if body.sets else 0
+
+    from datetime import datetime as dt
+    try:
+        created_dt = dt.fromisoformat(workout["created_at"])
+        duration_minutes = int((dt.utcnow() - created_dt).total_seconds() / 60)
+    except Exception:
+        duration_minutes = 0
+
     await finish_workout(body.workout_id, tonnage, avg_rpe)
 
     # Продвигаем программу
@@ -267,11 +298,35 @@ async def finish_workout_endpoint(
                       current_week_type=next_week_type,
                       current_week=next_week_num)
 
+    sets_for_analysis = [
+        {"exercise": s.exercise, "actual_weight": s.actual_weight, "reps": s.reps, "rpe": s.rpe}
+        for s in body.sets
+    ]
+    background_tasks.add_task(
+        _run_workout_analysis,
+        body.workout_id, user, body.day_type, body.week_type, sets_for_analysis
+    )
+
     return {
+        "workout_id": body.workout_id,
         "tonnage": round(tonnage),
         "avg_rpe": round(avg_rpe, 1),
         "sets_count": len(body.sets),
+        "duration_minutes": duration_minutes,
     }
+
+
+@app.get("/api/workout/{workout_id}/analysis")
+async def workout_analysis_endpoint(
+    workout_id: int,
+    x_init_data: str = Header(alias="x-init-data"),
+):
+    user_id = validate_init_data(x_init_data)
+    workout = await get_workout_by_id(workout_id)
+    if not workout or workout["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    analysis = await get_workout_analysis(workout_id)
+    return {"ready": analysis is not None, "analysis": analysis}
 
 
 # ── Nutrition ─────────────────────────────────────────────────────────────────

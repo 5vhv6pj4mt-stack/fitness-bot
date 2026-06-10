@@ -90,9 +90,10 @@ async def init_db():
             )
         """)
         for col in [
-            ("is_finished", "INTEGER DEFAULT 0"),
-            ("ex_index",    "INTEGER DEFAULT 0"),
-            ("set_index",   "INTEGER DEFAULT 0"),
+            ("is_finished",  "INTEGER DEFAULT 0"),
+            ("ex_index",     "INTEGER DEFAULT 0"),
+            ("set_index",    "INTEGER DEFAULT 0"),
+            ("ai_analysis",  "TEXT"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE workouts ADD COLUMN {col[0]} {col[1]}")
@@ -436,6 +437,25 @@ async def get_last_workout_by_day(user_id: int, day_type: str) -> dict | None:
         ) as cur:
             row = await cur.fetchone()
             return dict(row) if row else None
+
+
+async def save_workout_analysis(workout_id: int, analysis: str):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE workouts SET ai_analysis=? WHERE id=?",
+            (analysis, workout_id)
+        )
+        await db.commit()
+
+
+async def get_workout_analysis(workout_id: int) -> str | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT ai_analysis FROM workouts WHERE id=?",
+            (workout_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
 
 
 async def get_last_workouts(user_id: int, limit: int = 5) -> list[dict]:

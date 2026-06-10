@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useRef, useState, useCallback } from 'react'
+import { useEffect, useReducer, useRef, useState, useCallback, memo } from 'react'
 import { api } from '../api'
 import { haptic } from '../tg'
 
@@ -165,27 +165,81 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
 }
 
 // ── Finish screen ─────────────────────────────────────────────────────────────
-function FinishScreen({ result, onBack }) {
+function FinishScreen({ result, onBack, onGoProgress }) {
+  const [analysis, setAnalysis] = useState(null)
+  const [analysisLoading, setAnalysisLoading] = useState(!!result.workout_id)
+  const intervalRef = useRef(null)
+
+  useEffect(() => {
+    if (!result.workout_id) return
+    const poll = async () => {
+      try {
+        const res = await api.workoutAnalysis(result.workout_id)
+        if (res.ready) {
+          clearInterval(intervalRef.current)
+          setAnalysis(res.analysis)
+          setAnalysisLoading(false)
+        }
+      } catch {
+        clearInterval(intervalRef.current)
+        setAnalysisLoading(false)
+      }
+    }
+    poll()
+    intervalRef.current = setInterval(poll, 2500)
+    return () => clearInterval(intervalRef.current)
+  }, [result.workout_id])
+
+  const fmtDuration = (mins) => {
+    if (!mins) return '—'
+    const h = Math.floor(mins / 60)
+    const m = mins % 60
+    return h > 0 ? `${h}ч ${m}м` : `${m}м`
+  }
+
   return (
     <div className="page">
-      <div className="card" style={{ textAlign: 'center', padding: '32px 16px' }}>
-        <div style={{ fontSize: 40, marginBottom: 16 }}>🏁</div>
-        <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 24 }}>Тренировка завершена!</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 24 }}>
-          <div>
-            <div className="finish-stat">{result.tonnage}</div>
-            <div className="finish-stat-label">кг тоннаж</div>
-          </div>
-          <div>
-            <div className="finish-stat">{result.avg_rpe}</div>
-            <div className="finish-stat-label">средний RPE</div>
-          </div>
-          <div>
-            <div className="finish-stat">{result.sets_count}</div>
-            <div className="finish-stat-label">подходов</div>
-          </div>
+      <div className="card" style={{ textAlign: 'center', padding: '28px 16px', marginBottom: 12 }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🏁</div>
+        <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>Тренировка завершена!</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
+          {[
+            { val: result.tonnage, label: 'кг тоннаж' },
+            { val: fmtDuration(result.duration_minutes), label: 'время' },
+            { val: result.sets_count, label: 'подходов' },
+            { val: result.avg_rpe, label: 'средний RPE' },
+          ].map(({ val, label }) => (
+            <div key={label} style={{ background: 'var(--bg)', borderRadius: 12, padding: '14px 8px' }}>
+              <div className="finish-stat">{val}</div>
+              <div className="finish-stat-label">{label}</div>
+            </div>
+          ))}
         </div>
-        <button className="btn-primary" onClick={onBack}>Отлично! 💪</button>
+      </div>
+
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="section-title" style={{ marginBottom: 10 }}>🤖 Анализ тренировки</div>
+        {analysisLoading ? (
+          <div style={{ color: 'var(--hint)', fontSize: 14, display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
+            <span className="spinner-dots" />
+            Тренер анализирует...
+          </div>
+        ) : analysis ? (
+          <div style={{ fontSize: 14, lineHeight: 1.6, whiteSpace: 'pre-wrap', color: 'var(--text)' }}>
+            {analysis}
+          </div>
+        ) : (
+          <div style={{ color: 'var(--hint)', fontSize: 13 }}>Анализ недоступен</div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10 }}>
+        <button className="btn-secondary" style={{ flex: 1 }} onClick={onBack}>
+          На главную
+        </button>
+        <button className="btn-primary" style={{ flex: 1 }} onClick={onGoProgress}>
+          Прогресс →
+        </button>
       </div>
     </div>
   )
@@ -259,7 +313,7 @@ function reducer(state, action) {
 }
 
 // ── Main Workout page ─────────────────────────────────────────────────────────
-export default function Workout() {
+export default function Workout({ onGoProgress }) {
   const [state, dispatch] = useReducer(reducer, initial)
   const { plan, loading, err, workoutId, exercises, exIndex, setIndex, loggedSets, showRest, finishResult, finishing } = state
   const finishingRef = useRef(false)
@@ -330,12 +384,16 @@ export default function Workout() {
   if (err) return <div className="spinner" style={{ color: '#f87171' }}>{err}</div>
 
   if (finishResult) {
-    return <FinishScreen result={finishResult} onBack={() => {
-      dispatch({ type: 'BACK' })
-      api.workoutPlan()
-        .then((plan) => dispatch({ type: 'RELOAD_OK', plan }))
-        .catch((e) => dispatch({ type: 'PLAN_ERR', err: e.message }))
-    }} />
+    return <FinishScreen
+      result={finishResult}
+      onGoProgress={onGoProgress}
+      onBack={() => {
+        dispatch({ type: 'BACK' })
+        api.workoutPlan()
+          .then((plan) => dispatch({ type: 'RELOAD_OK', plan }))
+          .catch((e) => dispatch({ type: 'PLAN_ERR', err: e.message }))
+      }}
+    />
   }
 
   // Plan view (not started)

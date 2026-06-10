@@ -42,4 +42,5 @@ export const api = {
   deleteFood: (id) => req(`/nutrition/${id}`, { method: 'DELETE' }),
   progress: () => req('/progress'),
   exerciseHistory: (name) => req(`/progress/exercise?name=${encodeURIComponent(name)}`),
+  workoutAnalysis: (id) => req(`/workout/${id}/analysis`),
 }
