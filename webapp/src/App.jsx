@@ -2,6 +2,7 @@ import { useState, Component } from 'react'
 import Dashboard from './pages/Dashboard'
 import Workout from './pages/Workout'
 import Nutrition from './pages/Nutrition'
+import Progress from './pages/Progress'
 
 class ErrorBoundary extends Component {
   state = { error: null }
@@ -52,6 +53,15 @@ const TABS = [
       </svg>
     ),
   },
+  {
+    id: 'progress',
+    label: 'Прогресс',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+      </svg>
+    ),
+  },
 ]
 
 export default function App() {
@@ -62,6 +72,7 @@ export default function App() {
       {tab === 'dashboard' && <Dashboard onGoWorkout={() => setTab('workout')} />}
       {tab === 'workout' && <Workout />}
       {tab === 'nutrition' && <Nutrition />}
+      {tab === 'progress' && <Progress />}
 
       <nav className="navbar">
         {TABS.map((t) => (

@@ -741,6 +741,55 @@ async def get_week_nutrition_avg(user_id: int, week_start: str, week_end: str) -
             }
 
 
+async def get_daily_nutrition_7d(user_id: int) -> dict:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT date, SUM(calories) FROM food_log
+               WHERE user_id=? AND date >= date('now', '-6 days')
+               GROUP BY date""",
+            (user_id,)
+        ) as cur:
+            return {r[0]: r[1] for r in await cur.fetchall()}
+
+
+async def get_avg_rpe_recent(user_id: int, limit: int = 10) -> float:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT AVG(avg_rpe) FROM (
+               SELECT avg_rpe FROM workouts
+               WHERE user_id=? AND is_finished=1 AND avg_rpe > 0
+               ORDER BY date DESC LIMIT ?)""",
+            (user_id, limit)
+        ) as cur:
+            row = await cur.fetchone()
+            return round(row[0] or 0, 1)
+
+
+async def get_exercise_weight_history(user_id: int, exercise: str, limit: int = 8) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT w.date, MAX(s.actual_weight) as weight
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1 AND s.exercise=? AND s.actual_weight > 0
+               GROUP BY w.id ORDER BY w.date DESC LIMIT ?""",
+            (user_id, exercise, limit)
+        ) as cur:
+            rows = await cur.fetchall()
+            return [{"date": r[0], "weight": r[1]} for r in reversed(rows)]
+
+
+async def get_user_exercises(user_id: int) -> list[str]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT DISTINCT s.exercise
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1 AND s.actual_weight > 0
+               ORDER BY s.exercise""",
+            (user_id,)
+        ) as cur:
+            return [r[0] for r in await cur.fetchall()]
+
+
 async def get_week_exercise_weights(user_id: int, week_start: str, week_end: str) -> dict[str, float]:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(

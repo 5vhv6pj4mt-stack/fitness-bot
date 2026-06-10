@@ -20,6 +20,9 @@ from database.db import (
     get_active_workout, get_workout_by_id, create_workout, save_set, finish_workout,
     update_workout_progress, discard_all_active_workouts,
     get_food_entry, update_food_entry, delete_food_entry,
+    get_tonnage_by_weeks, get_exercise_prs, get_all_time_stats,
+    get_nutrition_week_avg, get_daily_nutrition_7d, get_avg_rpe_recent,
+    get_exercise_weight_history, get_user_exercises,
 )
 
 app = FastAPI()
@@ -366,3 +369,82 @@ async def delete_food_endpoint(
         raise HTTPException(status_code=404, detail="Entry not found")
     await delete_food_entry(entry_id)
     return {"ok": True}
+
+
+@app.get("/api/progress")
+async def progress_endpoint(x_init_data: str = Header(alias="x-init-data")):
+    from datetime import date as date_cls, timedelta
+    user_id = validate_init_data(x_init_data)
+    user = await get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    today_date = date_cls.today()
+    DAY_NAMES_RU = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+
+    tonnage_raw = await get_tonnage_by_weeks(user_id, n_weeks=8)
+    tonnage_map = {item["week_label"]: item["tonnage"] for item in tonnage_raw}
+    tonnage_weeks = []
+    for i in range(7, -1, -1):
+        week_date = today_date - timedelta(weeks=i)
+        iso_week = week_date.strftime('%Y-W%W')
+        tonnage_weeks.append({
+            "label": "Сейчас" if i == 0 else f"Н-{i}",
+            "tonnage": round(tonnage_map.get(iso_week, 0)),
+        })
+
+    all_time = await get_all_time_stats(user_id)
+    avg_rpe = await get_avg_rpe_recent(user_id)
+    prs = await get_exercise_prs(user_id, limit=6)
+    nutr_avg = await get_nutrition_week_avg(user_id)
+
+    daily_raw = await get_daily_nutrition_7d(user_id)
+    nutrition_daily = []
+    for i in range(6, -1, -1):
+        d = today_date - timedelta(days=i)
+        day_str = d.strftime('%Y-%m-%d')
+        nutrition_daily.append({
+            "day_label": DAY_NAMES_RU[d.weekday()],
+            "calories": round(daily_raw.get(day_str, 0)),
+            "is_today": i == 0,
+        })
+
+    exercises = await get_user_exercises(user_id)
+
+    return {
+        "tonnage_weeks": tonnage_weeks,
+        "stats": {
+            "total_workouts": all_time["total_workouts"],
+            "avg_rpe": avg_rpe,
+            "body_weight": user.get("weight"),
+        },
+        "exercise_prs": [
+            {"exercise": p["exercise"], "weight": p["max_weight"], "reps": p["reps"]}
+            for p in prs
+        ],
+        "nutrition_week": {
+            "avg_calories": round(nutr_avg["avg_calories"]),
+            "avg_protein": round(nutr_avg["avg_protein"]),
+            "avg_carbs": round(nutr_avg["avg_carbs"]),
+            "avg_fat": round(nutr_avg["avg_fat"]),
+            "days_tracked": nutr_avg["days_tracked"],
+        },
+        "nutrition_daily": nutrition_daily,
+        "goals": {
+            "calories": user.get("goal_calories") or 2500,
+            "protein": user.get("goal_protein") or 150,
+            "carbs": user.get("goal_carbs") or 250,
+            "fat": user.get("goal_fat") or 80,
+        },
+        "exercises": exercises,
+    }
+
+
+@app.get("/api/progress/exercise")
+async def exercise_history_endpoint(
+    name: str,
+    x_init_data: str = Header(alias="x-init-data"),
+):
+    user_id = validate_init_data(x_init_data)
+    history = await get_exercise_weight_history(user_id, name, limit=8)
+    return {"history": history}
