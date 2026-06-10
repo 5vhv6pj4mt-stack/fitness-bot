@@ -3,6 +3,7 @@ import Dashboard from './pages/Dashboard'
 import Workout from './pages/Workout'
 import Nutrition from './pages/Nutrition'
 import Progress from './pages/Progress'
+import Program from './pages/Program'
 
 class ErrorBoundary extends Component {
   state = { error: null }
@@ -62,6 +63,16 @@ const TABS = [
       </svg>
     ),
   },
+  {
+    id: 'program',
+    label: 'Программа',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M9 11l3 3L22 4" />
+        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+      </svg>
+    ),
+  },
 ]
 
 export default function App() {
@@ -73,6 +84,7 @@ export default function App() {
       {tab === 'workout' && <Workout onGoProgress={() => setTab('progress')} />}
       {tab === 'nutrition' && <Nutrition />}
       {tab === 'progress' && <Progress />}
+      {tab === 'program' && <Program onGoWorkout={() => setTab('workout')} />}
 
       <nav className="navbar">
         {TABS.map((t) => (

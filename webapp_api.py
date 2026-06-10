@@ -471,6 +471,86 @@ async def delete_food_endpoint(
     return {"ok": True}
 
 
+@app.get("/api/program")
+async def program_endpoint(x_init_data: str = Header(alias="x-init-data")):
+    user_id = validate_init_data(x_init_data)
+    user = await get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    week_type = user["current_week_type"]
+    current_day_index = user["current_day_index"]
+    current_week = user["current_week"]
+
+    day_types = await get_user_day_types(user_id, week_type)
+    all_week_types = await get_user_week_types(user_id)
+    total_weeks = len(all_week_types) if all_week_types else 3
+    week_in_cycle = ((current_week - 1) % total_weeks) + 1
+
+    recent_workouts = await get_last_workouts(user_id, limit=30)
+
+    days = []
+    for i, day_type in enumerate(day_types):
+        exercises = await get_user_program(user_id, week_type, day_type)
+        if i < current_day_index:
+            status = "done"
+            matching = [w for w in recent_workouts
+                        if w["day_type"] == day_type and w["week_type"] == week_type]
+            w = matching[0] if matching else None
+            workout_info = {"date": w["date"], "tonnage": round(w["total_tonnage"] or 0)} if w else None
+        elif i == current_day_index:
+            status = "current"
+            workout_info = None
+        else:
+            status = "upcoming"
+            workout_info = None
+
+        days.append({
+            "index": i,
+            "day_type": day_type,
+            "day_label": DAY_TYPES.get(day_type, day_type),
+            "status": status,
+            "workout": workout_info,
+            "exercises": [
+                {
+                    "name": ex["exercise"],
+                    "sets": ex["sets"],
+                    "reps": ex["reps_range"],
+                    "weight": ex["weight"],
+                }
+                for ex in exercises
+            ],
+        })
+
+    # Next week preview: first day of next week type
+    week_order = list(all_week_types) if all_week_types else ["strength", "volume", "deload"]
+    cur_idx = week_order.index(week_type) if week_type in week_order else 0
+    next_week_type = week_order[(cur_idx + 1) % len(week_order)]
+    next_day_types = await get_user_day_types(user_id, next_week_type)
+    next_day_type = next_day_types[0] if next_day_types else None
+    next_exercises = await get_user_program(user_id, next_week_type, next_day_type) if next_day_type else []
+
+    return {
+        "week_type": week_type,
+        "week_type_label": WEEK_TYPES.get(week_type, week_type),
+        "week_number": current_week,
+        "week_in_cycle": week_in_cycle,
+        "total_weeks_in_cycle": total_weeks,
+        "completed_days": current_day_index,
+        "total_days": len(day_types),
+        "days": days,
+        "next_week": {
+            "week_type": next_week_type,
+            "week_type_label": WEEK_TYPES.get(next_week_type, next_week_type),
+            "day_label": DAY_TYPES.get(next_day_type, next_day_type) if next_day_type else "",
+            "exercises": [
+                {"name": ex["exercise"], "sets": ex["sets"], "reps": ex["reps_range"], "weight": ex["weight"]}
+                for ex in next_exercises
+            ],
+        } if next_day_type else None,
+    }
+
+
 @app.get("/api/nutrition/templates")
 async def nutrition_templates(x_init_data: str = Header(alias="x-init-data")):
     user_id = validate_init_data(x_init_data)
