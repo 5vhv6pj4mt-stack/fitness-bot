@@ -37,15 +37,34 @@ export function getTheme() {
   return getTg()?.themeParams || {}
 }
 
+const DARK_OVERRIDES = {
+  '--tg-theme-bg-color': '#1c1c1e',
+  '--tg-theme-secondary-bg-color': '#2c2c2e',
+  '--tg-theme-text-color': '#ffffff',
+  '--tg-theme-hint-color': '#8e8e93',
+  '--tg-theme-button-color': '#0a84ff',
+  '--tg-theme-button-text-color': '#ffffff',
+  '--tg-theme-link-color': '#0a84ff',
+}
+
 export function applyColorScheme() {
   const tg = getTg()
   const override = localStorage.getItem('theme')
-  const scheme = override || tg?.colorScheme || 'dark'
-  if (scheme === 'light') {
-    document.documentElement.classList.add('tg-light')
+  const root = document.documentElement
+
+  if (override === 'dark') {
+    Object.entries(DARK_OVERRIDES).forEach(([k, v]) => root.style.setProperty(k, v))
+    root.classList.remove('tg-light')
+  } else if (override === 'light') {
+    Object.keys(DARK_OVERRIDES).forEach((k) => root.style.removeProperty(k))
+    root.classList.add('tg-light')
   } else {
-    document.documentElement.classList.remove('tg-light')
+    Object.keys(DARK_OVERRIDES).forEach((k) => root.style.removeProperty(k))
+    const scheme = tg?.colorScheme || 'dark'
+    if (scheme === 'light') root.classList.add('tg-light')
+    else root.classList.remove('tg-light')
   }
+
   tg?.onEvent?.('themeChanged', () => {
     if (!localStorage.getItem('theme')) applyColorScheme()
   })
