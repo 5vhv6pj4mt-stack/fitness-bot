@@ -1,5 +1,4 @@
-import { useState, Component, useEffect } from 'react'
-import { getInitData } from './tg'
+import { useState, Component } from 'react'
 import Dashboard from './pages/Dashboard'
 import Workout from './pages/Workout'
 import Nutrition from './pages/Nutrition'
@@ -80,28 +79,6 @@ const TABS = [
 
 export default function App() {
   const [tab, setTab] = useState('dashboard')
-  const [initData, setInitData] = useState(() => getInitData())
-
-  // Re-check initData after 500ms — Android sometimes injects it slightly late
-  useEffect(() => {
-    if (initData) return
-    const t = setTimeout(() => setInitData(getInitData()), 500)
-    return () => clearTimeout(t)
-  }, [initData])
-
-  if (!initData) {
-    return (
-      <div style={{ padding: 32, textAlign: 'center', color: 'var(--hint)' }}>
-        <div style={{ fontSize: 40, marginBottom: 16 }}>🤖</div>
-        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
-          Открой приложение через Telegram
-        </div>
-        <div style={{ fontSize: 13 }}>
-          Нажми кнопку «Открыть приложение» в боте @stat_sila_bot
-        </div>
-      </div>
-    )
-  }
 
   return (
     <ErrorBoundary>
