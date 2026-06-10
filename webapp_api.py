@@ -32,6 +32,7 @@ from database.db import (
     get_water_today, add_water_glass,
     log_weight, get_weight_history,
     log_measurements, get_latest_measurements, get_measurements_month_ago,
+    get_week_workouts, get_week_nutrition_avg,
 )
 
 from contextlib import asynccontextmanager
@@ -801,6 +802,64 @@ async def progress_endpoint(x_init_data: str = Header(alias="x-init-data")):
             "fat": user.get("goal_fat") or 80,
         },
         "exercises": exercises,
+    }
+
+
+@app.get("/api/progress/week")
+async def week_report_endpoint(x_init_data: str = Header(alias="x-init-data")):
+    from datetime import date as date_cls, timedelta
+    user_id = validate_init_data(x_init_data)
+    user = await get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    today = date_cls.today()
+    week_start = (today - timedelta(days=today.weekday())).strftime('%Y-%m-%d')
+    week_end = today.strftime('%Y-%m-%d')
+    prev_start = (today - timedelta(days=today.weekday() + 7)).strftime('%Y-%m-%d')
+    prev_end = (today - timedelta(days=today.weekday() + 1)).strftime('%Y-%m-%d')
+
+    workouts = await get_week_workouts(user_id, week_start, week_end)
+    prev_workouts = await get_week_workouts(user_id, prev_start, prev_end)
+    nutr = await get_week_nutrition_avg(user_id, week_start, week_end)
+
+    tonnage_this = sum(w.get("total_tonnage") or 0 for w in workouts)
+    tonnage_prev = sum(w.get("total_tonnage") or 0 for w in prev_workouts)
+    tonnage_delta = round(tonnage_this - tonnage_prev) if tonnage_prev else None
+
+    DAY_TYPE_LABELS = {
+        "upper_strength": "Верх — Сила", "upper_volume": "Верх — Объём", "legs": "Ноги",
+    }
+
+    return {
+        "workouts": [
+            {
+                "date": w["date"],
+                "day_type": DAY_TYPE_LABELS.get(w.get("day_type", ""), w.get("day_type", "—")),
+                "tonnage": round(w.get("total_tonnage") or 0),
+                "rpe": w.get("avg_rpe"),
+            }
+            for w in workouts
+        ],
+        "workouts_count": len(workouts),
+        "tonnage_this_week": round(tonnage_this),
+        "tonnage_prev_week": round(tonnage_prev),
+        "tonnage_delta": tonnage_delta,
+        "nutrition": {
+            "avg_calories": round(nutr["avg_calories"]),
+            "avg_protein": round(nutr["avg_protein"]),
+            "avg_carbs": round(nutr["avg_carbs"]),
+            "avg_fat": round(nutr["avg_fat"]),
+            "days_tracked": nutr["days_tracked"],
+        },
+        "goals": {
+            "calories": user.get("goal_calories") or 2500,
+            "protein": user.get("goal_protein") or 150,
+            "carbs": user.get("goal_carbs") or 250,
+            "fat": user.get("goal_fat") or 80,
+        },
+        "week_start": week_start,
+        "days_planned": user.get("days_per_week") or 3,
     }
 
 

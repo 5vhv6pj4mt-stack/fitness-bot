@@ -3,7 +3,136 @@ import { AreaChart, Area, BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Ce
 import { api } from '../api'
 import ProgressBar from '../components/ProgressBar'
 
-const TAB_LABELS = ['Тоннаж', 'Питание', 'Веса', 'Тело', 'Мышцы']
+const TAB_LABELS = ['Неделя', 'Тоннаж', 'Питание', 'Веса', 'Тело', 'Мышцы']
+
+function WeekTab() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.weekReport()
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div style={{ color: 'var(--hint)', textAlign: 'center', padding: 32 }}>Загружаем...</div>
+  if (!data) return <div style={{ color: '#f87171', textAlign: 'center', padding: 32 }}>Ошибка загрузки</div>
+
+  const { workouts, workouts_count, tonnage_this_week, tonnage_prev_week, tonnage_delta,
+    nutrition, goals, days_planned } = data
+  const nutrPct = goals.calories > 0 ? Math.round(nutrition.avg_calories / goals.calories * 100) : 0
+  const deltaSign = tonnage_delta > 0 ? '+' : ''
+  const deltaColor = tonnage_delta > 0 ? 'var(--green)' : tonnage_delta < 0 ? '#f87171' : 'var(--hint)'
+
+  const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+  const today = new Date()
+  const weekDayIdx = (today.getDay() + 6) % 7
+
+  return (
+    <>
+      {/* Тренировки */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>💪 Тренировки</div>
+          <div style={{ fontSize: 13, color: 'var(--hint)' }}>{workouts_count} / {days_planned} запл.</div>
+        </div>
+
+        {/* Дни недели */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          {DAY_NAMES.map((d, i) => {
+            const done = workouts.some(w => {
+              const wd = new Date(w.date)
+              return (wd.getDay() + 6) % 7 === i
+            })
+            const isFuture = i > weekDayIdx
+            return (
+              <div key={i} style={{
+                flex: 1, textAlign: 'center', padding: '6px 0', borderRadius: 8, fontSize: 11,
+                background: done ? 'var(--green)' : isFuture ? 'var(--bg)' : 'var(--bg3)',
+                color: done ? '#fff' : isFuture ? 'var(--bg3)' : 'var(--hint)',
+                fontWeight: done ? 700 : 400,
+              }}>{d}</div>
+            )
+          })}
+        </div>
+
+        {workouts.length > 0 ? workouts.map((w, i) => (
+          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            padding: '8px 0', borderBottom: i < workouts.length - 1 ? '1px solid var(--sep)' : 'none' }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{w.day_type}</div>
+              <div style={{ fontSize: 11, color: 'var(--hint)' }}>{w.date.slice(5).replace('-', '/')}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{w.tonnage.toLocaleString()} кг</div>
+              {w.rpe && <div style={{ fontSize: 11, color: 'var(--hint)' }}>RPE {w.rpe}</div>}
+            </div>
+          </div>
+        )) : (
+          <div style={{ color: 'var(--hint)', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>
+            Тренировок на этой неделе ещё нет
+          </div>
+        )}
+      </div>
+
+      {/* Тоннаж */}
+      <div className="card">
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>⚡ Тоннаж недели</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{tonnage_this_week.toLocaleString()} кг</div>
+          {tonnage_delta !== null && (
+            <div style={{ fontSize: 14, color: deltaColor, fontWeight: 600 }}>
+              {deltaSign}{tonnage_delta.toLocaleString()} кг vs прошлая
+            </div>
+          )}
+        </div>
+        {tonnage_prev_week > 0 && (
+          <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 4 }}>
+            Прошлая неделя: {tonnage_prev_week.toLocaleString()} кг
+          </div>
+        )}
+      </div>
+
+      {/* Питание */}
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>🍽 Питание (средн.)</div>
+          <div style={{ fontSize: 12, color: 'var(--hint)' }}>{nutrition.days_tracked} дн. из 7</div>
+        </div>
+        {nutrition.days_tracked > 0 ? (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 13 }}>🔥 Калории</span>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>
+                {nutrition.avg_calories} / {goals.calories}
+                <span style={{ color: nutrPct >= 90 && nutrPct <= 110 ? 'var(--green)' : '#f59e0b',
+                  marginLeft: 6, fontSize: 11 }}>{nutrPct}%</span>
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[
+                { label: 'Белок', val: nutrition.avg_protein, goal: goals.protein, color: '#3b82f6' },
+                { label: 'Углев.', val: nutrition.avg_carbs, goal: goals.carbs, color: '#10b981' },
+                { label: 'Жиры', val: nutrition.avg_fat, goal: goals.fat, color: '#8b5cf6' },
+              ].map(({ label, val, goal, color }) => (
+                <div key={label} style={{ flex: 1, background: 'var(--bg)', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: 'var(--hint)', marginBottom: 2 }}>{label}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color }}>{val}г</div>
+                  <div style={{ fontSize: 10, color: 'var(--hint)' }}>/{goal}г</div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div style={{ color: 'var(--hint)', fontSize: 13, textAlign: 'center' }}>
+            Питание на этой неделе не записано
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
 
 const TonnageTooltip = memo(({ active, payload }) => {
   if (!active || !payload?.length) return null
@@ -702,11 +831,12 @@ export default function Progress() {
         ))}
       </div>
 
-      {tab === 0 && <TonnageTab data={data} />}
-      {tab === 1 && <NutritionTab data={data} />}
-      {tab === 2 && <WeightsTab exercises={data.exercises} />}
-      {tab === 3 && <BodyTab />}
-      {tab === 4 && <MusclesTab />}
+      {tab === 0 && <WeekTab />}
+      {tab === 1 && <TonnageTab data={data} />}
+      {tab === 2 && <NutritionTab data={data} />}
+      {tab === 3 && <WeightsTab exercises={data.exercises} />}
+      {tab === 4 && <BodyTab />}
+      {tab === 5 && <MusclesTab />}
     </div>
   )
 }
