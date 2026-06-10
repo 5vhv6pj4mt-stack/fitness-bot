@@ -3,7 +3,7 @@ import { AreaChart, Area, BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Ce
 import { api } from '../api'
 import ProgressBar from '../components/ProgressBar'
 
-const TAB_LABELS = ['Тоннаж', 'Питание', 'Веса']
+const TAB_LABELS = ['Тоннаж', 'Питание', 'Веса', 'Тело', 'Мышцы']
 
 const TonnageTooltip = memo(({ active, payload }) => {
   if (!active || !payload?.length) return null
@@ -171,6 +171,219 @@ function NutritionTab({ data }) {
   )
 }
 
+function BodyTab() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [weightInput, setWeightInput] = useState('')
+  const [showWeightForm, setShowWeightForm] = useState(false)
+  const [showMeasForm, setShowMeasForm] = useState(false)
+  const [measInputs, setMeasInputs] = useState({ chest: '', waist: '', bicep: '', hips: '' })
+  const [saving, setSaving] = useState(false)
+
+  const load = () => {
+    setLoading(true)
+    api.bodyData()
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => { load() }, [])
+
+  const saveWeight = async () => {
+    const w = parseFloat(weightInput)
+    if (!w || w < 20 || w > 400) return
+    setSaving(true)
+    try {
+      await api.logWeight(w)
+      setShowWeightForm(false)
+      setWeightInput('')
+      load()
+    } finally { setSaving(false) }
+  }
+
+  const saveMeasurements = async () => {
+    const payload = {}
+    for (const [k, v] of Object.entries(measInputs)) {
+      const n = parseFloat(v)
+      if (n > 0) payload[k] = n
+    }
+    if (!Object.keys(payload).length) return
+    setSaving(true)
+    try {
+      await api.logMeasurements(payload)
+      setShowMeasForm(false)
+      setMeasInputs({ chest: '', waist: '', bicep: '', hips: '' })
+      load()
+    } finally { setSaving(false) }
+  }
+
+  if (loading) return <div style={{ color: 'var(--hint)', textAlign: 'center', padding: 32 }}>Загружаем...</div>
+  if (!data) return <div style={{ color: '#f87171', textAlign: 'center', padding: 32 }}>Ошибка загрузки</div>
+
+  const { current_weight, weight_history, measurements, deltas, bmi, bmi_label } = data
+  const chartData = weight_history.map(d => ({ ...d, date: d.date.slice(5) }))
+  const wFirst = weight_history[0]?.weight
+  const wLast = weight_history[weight_history.length - 1]?.weight
+  const weightDelta = (weight_history.length >= 2 && wFirst && wLast)
+    ? parseFloat((wLast - wFirst).toFixed(1)) : null
+
+  const MEAS_LABELS = { chest: 'Грудь', waist: 'Талия', bicep: 'Бицепс', hips: 'Бёдра' }
+
+  return (
+    <>
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div className="section-title" style={{ marginBottom: 0 }}>Вес тела</div>
+          <button
+            onClick={() => setShowWeightForm(v => !v)}
+            style={{
+              background: showWeightForm ? 'var(--bg3)' : 'var(--accent)',
+              color: showWeightForm ? 'var(--text)' : 'var(--accent-text)',
+              borderRadius: 8, padding: '4px 12px', fontSize: 13, fontWeight: 600,
+            }}
+          >{showWeightForm ? 'Отмена' : '+ Вес'}</button>
+        </div>
+
+        {showWeightForm && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <input
+              type="number"
+              value={weightInput}
+              onChange={e => setWeightInput(e.target.value)}
+              placeholder="кг, напр. 82.5"
+              style={{
+                flex: 1, background: 'var(--bg)', color: 'var(--text)',
+                border: '1px solid var(--border)', borderRadius: 10,
+                padding: '10px 12px', fontSize: 14,
+              }}
+            />
+            <button
+              onClick={saveWeight} disabled={saving}
+              style={{
+                background: '#30d158', color: '#fff', borderRadius: 10,
+                padding: '10px 16px', fontSize: 14, fontWeight: 600,
+              }}
+            >{saving ? '...' : 'OK'}</button>
+          </div>
+        )}
+
+        <div style={{ marginBottom: 8 }}>
+          <span style={{ fontSize: 32, fontWeight: 700 }}>{current_weight || '—'}</span>
+          {current_weight > 0 && <span style={{ fontSize: 16, color: 'var(--hint)', marginLeft: 4 }}>кг</span>}
+          {weightDelta !== null && (
+            <span style={{ marginLeft: 12, fontSize: 13, color: weightDelta > 0 ? '#ff453a' : '#30d158' }}>
+              {weightDelta > 0 ? '↑ +' : '↓ '}{Math.abs(weightDelta)} кг за 8 нед.
+            </span>
+          )}
+        </div>
+
+        {chartData.length > 1 ? (
+          <ResponsiveContainer width="100%" height={130}>
+            <AreaChart data={chartData} margin={{ top: 8, right: 4, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id="bodyWGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#bf5af2" stopOpacity={0.35} />
+                  <stop offset="100%" stopColor="#bf5af2" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="date" tick={{ fontSize: 9, fill: 'var(--hint)' }} axisLine={false} tickLine={false} />
+              <Tooltip content={<WeightTooltip />} cursor={{ stroke: '#bf5af2', strokeWidth: 1, strokeDasharray: '4 2' }} />
+              <Area type="monotone" dataKey="weight" stroke="#bf5af2" strokeWidth={2.5} fill="url(#bodyWGrad)"
+                dot={{ fill: '#bf5af2', r: 3, strokeWidth: 0 }}
+                activeDot={{ r: 5, fill: '#bf5af2', stroke: 'var(--bg)', strokeWidth: 2 }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div style={{ color: 'var(--hint)', fontSize: 13, padding: '8px 0' }}>
+            Нет истории — записывай вес каждую неделю
+          </div>
+        )}
+      </div>
+
+      {bmi && (
+        <div className="card" style={{ background: 'rgba(10,132,255,0.12)', border: '1px solid rgba(10,132,255,0.25)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--hint)', marginBottom: 4 }}>Индекс массы тела (ИМТ)</div>
+              <div style={{ fontSize: 30, fontWeight: 700, color: '#0a84ff' }}>{bmi}</div>
+            </div>
+            <div style={{
+              background: '#0a84ff', color: '#fff',
+              borderRadius: 10, padding: '8px 16px', fontSize: 15, fontWeight: 600,
+            }}>{bmi_label}</div>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div className="section-title" style={{ marginBottom: 0 }}>Замеры (см)</div>
+          <button
+            onClick={() => setShowMeasForm(v => !v)}
+            style={{
+              background: showMeasForm ? 'var(--bg3)' : 'var(--bg3)',
+              color: 'var(--text)', borderRadius: 8, padding: '4px 12px', fontSize: 13,
+            }}
+          >{showMeasForm ? 'Отмена' : '+ Замеры'}</button>
+        </div>
+
+        {showMeasForm && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+              {Object.entries(MEAS_LABELS).map(([key, label]) => (
+                <div key={key}>
+                  <div style={{ fontSize: 11, color: 'var(--hint)', marginBottom: 4 }}>{label}</div>
+                  <input
+                    type="number"
+                    value={measInputs[key]}
+                    onChange={e => setMeasInputs(v => ({ ...v, [key]: e.target.value }))}
+                    placeholder="см"
+                    style={{
+                      width: '100%', background: 'var(--bg)', color: 'var(--text)',
+                      border: '1px solid var(--border)', borderRadius: 8,
+                      padding: '8px 10px', fontSize: 14, boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={saveMeasurements} disabled={saving}
+              style={{
+                width: '100%', background: '#30d158', color: '#fff',
+                borderRadius: 10, padding: 10, fontSize: 14, fontWeight: 600,
+              }}
+            >{saving ? 'Сохраняю...' : 'Сохранить замеры'}</button>
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {Object.entries(MEAS_LABELS).map(([key, label]) => {
+            const val = measurements[key]
+            const d = deltas[key]
+            return (
+              <div key={key} style={{ background: 'var(--bg)', borderRadius: 12, padding: '12px 14px' }}>
+                <div style={{ fontSize: 11, color: 'var(--hint)', marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>
+                  {val != null ? val : '—'}
+                  {val != null && <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--hint)', marginLeft: 2 }}>см</span>}
+                </div>
+                {d != null && (
+                  <div style={{ fontSize: 11, marginTop: 2, color: d > 0 ? '#ff9f0a' : '#30d158' }}>
+                    {d > 0 ? '↑ +' : '↓ '}{Math.abs(d)} за 30 дн.
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </>
+  )
+}
+
 function WeightsTab({ exercises }) {
   const [selected, setSelected] = useState(exercises[0] || '')
   const [history, setHistory] = useState([])
@@ -258,6 +471,200 @@ function WeightsTab({ exercises }) {
   )
 }
 
+function muscleColor(g) {
+  if (!g || !g.last_trained) return 'rgba(255,255,255,0.07)'
+  const a = (0.35 + g.intensity * 0.55).toFixed(2)
+  if (g.days_since <= 5) return `rgba(48,209,88,${a})`
+  if (g.days_since <= 12) return `rgba(255,159,10,${a})`
+  return `rgba(255,69,58,${a})`
+}
+
+function BodyFront({ byId }) {
+  const c = (id) => muscleColor(byId[id])
+  const fill = '#2a2a2e'
+  const stroke = '#48484a'
+  const sw = '1'
+  return (
+    <svg viewBox="0 0 100 240" style={{ width: '100%' }}>
+      {/* head */}
+      <circle cx="50" cy="13" r="11" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* neck */}
+      <rect x="46" y="24" width="8" height="7" fill={fill} stroke={stroke} strokeWidth="0.5" />
+      {/* left arm */}
+      <rect x="13" y="32" width="13" height="52" rx="6" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* right arm */}
+      <rect x="74" y="32" width="13" height="52" rx="6" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* torso upper */}
+      <path d="M26 32 L74 32 L69 82 L31 82 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* hips */}
+      <path d="M31 82 L69 82 L73 100 L27 100 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* left thigh */}
+      <rect x="27" y="99" width="19" height="60" rx="8" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* right thigh */}
+      <rect x="54" y="99" width="19" height="60" rx="8" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* left calf */}
+      <rect x="29" y="157" width="15" height="52" rx="6" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* right calf */}
+      <rect x="56" y="157" width="15" height="52" rx="6" fill={fill} stroke={stroke} strokeWidth={sw} />
+
+      {/* ── muscles ── */}
+      {/* chest */}
+      <ellipse cx="37" cy="50" rx="9" ry="11" fill={c('chest')} />
+      <ellipse cx="63" cy="50" rx="9" ry="11" fill={c('chest')} />
+      {/* shoulders */}
+      <ellipse cx="21" cy="38" rx="7" ry="6" fill={c('shoulders')} />
+      <ellipse cx="79" cy="38" rx="7" ry="6" fill={c('shoulders')} />
+      {/* biceps */}
+      <ellipse cx="19.5" cy="56" rx="5" ry="10" fill={c('biceps')} />
+      <ellipse cx="80.5" cy="56" rx="5" ry="10" fill={c('biceps')} />
+      {/* abs */}
+      <rect x="41" y="62" width="7" height="8" rx="2" fill={c('abs')} />
+      <rect x="52" y="62" width="7" height="8" rx="2" fill={c('abs')} />
+      <rect x="41" y="72" width="7" height="8" rx="2" fill={c('abs')} />
+      <rect x="52" y="72" width="7" height="8" rx="2" fill={c('abs')} />
+      {/* quads */}
+      <ellipse cx="36.5" cy="127" rx="8" ry="20" fill={c('quads')} />
+      <ellipse cx="63.5" cy="127" rx="8" ry="20" fill={c('quads')} />
+      {/* calves front */}
+      <ellipse cx="36.5" cy="175" rx="6" ry="15" fill={c('calves')} />
+      <ellipse cx="63.5" cy="175" rx="6" ry="15" fill={c('calves')} />
+    </svg>
+  )
+}
+
+function BodyBack({ byId }) {
+  const c = (id) => muscleColor(byId[id])
+  const fill = '#2a2a2e'
+  const stroke = '#48484a'
+  const sw = '1'
+  return (
+    <svg viewBox="0 0 100 240" style={{ width: '100%' }}>
+      {/* head */}
+      <circle cx="50" cy="13" r="11" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* neck */}
+      <rect x="46" y="24" width="8" height="7" fill={fill} stroke={stroke} strokeWidth="0.5" />
+      {/* left arm */}
+      <rect x="13" y="32" width="13" height="52" rx="6" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* right arm */}
+      <rect x="74" y="32" width="13" height="52" rx="6" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* torso upper */}
+      <path d="M26 32 L74 32 L69 82 L31 82 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* hips */}
+      <path d="M31 82 L69 82 L73 100 L27 100 Z" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* left thigh */}
+      <rect x="27" y="99" width="19" height="60" rx="8" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* right thigh */}
+      <rect x="54" y="99" width="19" height="60" rx="8" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* left calf */}
+      <rect x="29" y="157" width="15" height="52" rx="6" fill={fill} stroke={stroke} strokeWidth={sw} />
+      {/* right calf */}
+      <rect x="56" y="157" width="15" height="52" rx="6" fill={fill} stroke={stroke} strokeWidth={sw} />
+
+      {/* ── muscles ── */}
+      {/* traps */}
+      <path d="M26 32 Q50 50 74 32 L62 46 Q50 54 38 46 Z" fill={c('back')} />
+      {/* lats */}
+      <path d="M26 32 L31 82 L45 68 L36 38 Z" fill={c('back')} />
+      <path d="M74 32 L69 82 L55 68 L64 38 Z" fill={c('back')} />
+      {/* rear delts */}
+      <ellipse cx="21" cy="38" rx="7" ry="6" fill={c('shoulders')} />
+      <ellipse cx="79" cy="38" rx="7" ry="6" fill={c('shoulders')} />
+      {/* triceps */}
+      <ellipse cx="19.5" cy="56" rx="5" ry="10" fill={c('triceps')} />
+      <ellipse cx="80.5" cy="56" rx="5" ry="10" fill={c('triceps')} />
+      {/* glutes */}
+      <ellipse cx="36.5" cy="100" rx="11" ry="9" fill={c('glutes')} />
+      <ellipse cx="63.5" cy="100" rx="11" ry="9" fill={c('glutes')} />
+      {/* hamstrings */}
+      <ellipse cx="36.5" cy="127" rx="8" ry="20" fill={c('hamstrings')} />
+      <ellipse cx="63.5" cy="127" rx="8" ry="20" fill={c('hamstrings')} />
+      {/* calves back */}
+      <ellipse cx="36.5" cy="175" rx="6" ry="15" fill={c('calves')} />
+      <ellipse cx="63.5" cy="175" rx="6" ry="15" fill={c('calves')} />
+    </svg>
+  )
+}
+
+function MusclesTab() {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    api.musclesData()
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div style={{ color: 'var(--hint)', textAlign: 'center', padding: 32 }}>Загружаем...</div>
+  if (!data) return <div style={{ color: '#f87171', textAlign: 'center', padding: 32 }}>Ошибка загрузки</div>
+
+  const { groups } = data
+  const byId = Object.fromEntries(groups.map(g => [g.id, g]))
+
+  const daysLabel = (g) => {
+    if (!g.last_trained) return '—'
+    if (g.days_since === 0) return 'сегодня'
+    if (g.days_since === 1) return 'вчера'
+    return `${g.days_since}д`
+  }
+
+  const dotColor = (g) => {
+    if (!g.last_trained) return 'var(--bg3)'
+    if (g.days_since <= 5) return '#30d158'
+    if (g.days_since <= 12) return '#ff9f0a'
+    return '#ff453a'
+  }
+
+  return (
+    <>
+      {/* body figures */}
+      <div className="card">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div>
+            <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--hint)', marginBottom: 4 }}>Спереди</div>
+            <BodyFront byId={byId} />
+          </div>
+          <div>
+            <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--hint)', marginBottom: 4 }}>Сзади</div>
+            <BodyBack byId={byId} />
+          </div>
+        </div>
+
+        {/* legend */}
+        <div style={{ display: 'flex', gap: 12, marginTop: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+          {[
+            { color: '#30d158', label: '≤5 дн.' },
+            { color: '#ff9f0a', label: '6–12 дн.' },
+            { color: '#ff453a', label: '13+ дн.' },
+          ].map(({ color, label }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: color }} />
+              <span style={{ color: 'var(--hint)' }}>{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* compact list */}
+      <div className="card">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          {groups.map(g => (
+            <div key={g.id} style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '6px 8px', background: 'var(--bg)', borderRadius: 8,
+            }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor(g), flexShrink: 0 }} />
+              <div style={{ flex: 1, fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.label}</div>
+              <div style={{ fontSize: 11, color: dotColor(g), fontWeight: 600, flexShrink: 0 }}>{daysLabel(g)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
 export default function Progress() {
   const [tab, setTab] = useState(0)
   const [data, setData] = useState(null)
@@ -278,13 +685,13 @@ export default function Progress() {
     <div className="page">
       <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 16 }}>Прогресс</div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
         {TAB_LABELS.map((label, i) => (
           <button
             key={i}
             onClick={() => setTab(i)}
             style={{
-              flex: 1, padding: '8px 4px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+              flex: 1, padding: '7px 2px', borderRadius: 10, fontSize: 11, fontWeight: 600,
               background: tab === i ? 'var(--accent)' : 'var(--bg2)',
               color: tab === i ? 'var(--accent-text)' : 'var(--hint)',
               transition: 'background 0.15s, color 0.15s',
@@ -298,6 +705,8 @@ export default function Progress() {
       {tab === 0 && <TonnageTab data={data} />}
       {tab === 1 && <NutritionTab data={data} />}
       {tab === 2 && <WeightsTab exercises={data.exercises} />}
+      {tab === 3 && <BodyTab />}
+      {tab === 4 && <MusclesTab />}
     </div>
   )
 }

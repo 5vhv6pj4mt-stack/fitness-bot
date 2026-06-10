@@ -72,26 +72,43 @@ function RestTimer({ onDone }) {
 // ── Set input form ────────────────────────────────────────────────────────────
 const RPE_PILLS = [6.5, 7, 7.5, 8, 8.5, 9, 9.5]
 
-function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRange, onLog }) {
-  const [weight, setWeight] = useState(String(plannedWeight || ''))
-  const [reps, setReps] = useState('')
+function Stepper({ value, onChange, step, min = 0, fmt = (v) => v }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 0, background: 'var(--bg)', borderRadius: 12, overflow: 'hidden' }}>
+      <button
+        onClick={() => { haptic('light'); onChange(Math.max(min, parseFloat((value - step).toFixed(1)))) }}
+        style={{ width: 44, height: 52, fontSize: 22, color: 'var(--hint)', background: 'none', flexShrink: 0 }}
+      >−</button>
+      <div style={{ flex: 1, textAlign: 'center', fontSize: 22, fontWeight: 700, lineHeight: '52px' }}>
+        {fmt(value)}
+      </div>
+      <button
+        onClick={() => { haptic('light'); onChange(parseFloat((value + step).toFixed(1))) }}
+        style={{ width: 44, height: 52, fontSize: 22, color: 'var(--hint)', background: 'none', flexShrink: 0 }}
+      >+</button>
+    </div>
+  )
+}
+
+function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRange, lastWeight, lastReps, lastRpe, suggestedWeight, onLog }) {
+  const initWeight = suggestedWeight || plannedWeight || 0
+  const initReps = parseInt(String(repsRange).split('-')[0]) || 5
+
+  const [weight, setWeight] = useState(initWeight)
+  const [reps, setReps] = useState(initReps)
   const [rpe, setRpe] = useState('8')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
 
   const submit = async () => {
-    const w = parseFloat(weight)
-    const r = parseInt(reps)
-    const rpeVal = parseFloat(rpe) || 8
-    if (!w || !r) return
+    if (!weight || !reps) return
     setLoading(true)
     haptic('medium')
-    await onLog({ weight: w, reps: r, rpe: rpeVal, notes: notes.trim() || null })
+    await onLog({ weight, reps, rpe: parseFloat(rpe) || 8, notes: notes.trim() || null })
     setDone(true)
     setTimeout(() => setDone(false), 700)
-    setWeight(String(w))
-    setReps('')
+    setReps(initReps)
     setRpe('8')
     setNotes('')
     setLoading(false)
@@ -100,32 +117,32 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
   return (
     <div className="card">
       <div className="ex-title">{exercise}</div>
-      <div className="ex-meta">
-        Подход {setNum}/{totalSets} · {repsRange} повт · RPE {rpeRange}
-      </div>
+      <div className="ex-meta">Подход {setNum}/{totalSets} · {repsRange} повт · RPE {rpeRange}</div>
 
-      <div className="set-row-2col">
+      {lastWeight != null && (
+        <div style={{
+          background: 'var(--bg)', borderRadius: 10, padding: '8px 12px',
+          marginBottom: 12, fontSize: 13,
+        }}>
+          <span style={{ color: 'var(--hint)' }}>Прошлый раз: </span>
+          <span style={{ fontWeight: 600 }}>{lastWeight}кг × {lastReps}</span>
+          {lastRpe && <span style={{ color: 'var(--hint)' }}> RPE {lastRpe}</span>}
+          {suggestedWeight && suggestedWeight !== lastWeight && (
+            <span style={{ marginLeft: 8, color: 'var(--green)', fontWeight: 600 }}>
+              → {suggestedWeight}кг
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="set-row-2col" style={{ marginBottom: 12 }}>
         <div>
           <div className="set-input-label">Вес, кг</div>
-          <input
-            className="set-input"
-            type="number"
-            inputMode="decimal"
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
-            placeholder={plannedWeight || '0'}
-          />
+          <Stepper value={weight} onChange={setWeight} step={2.5} min={0} fmt={(v) => v > 0 ? v : '—'} />
         </div>
         <div>
           <div className="set-input-label">Повторы</div>
-          <input
-            className="set-input"
-            type="number"
-            inputMode="numeric"
-            value={reps}
-            onChange={(e) => setReps(e.target.value)}
-            placeholder="—"
-          />
+          <Stepper value={reps} onChange={setReps} step={1} min={1} />
         </div>
       </div>
 
@@ -155,7 +172,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
 
       <button
         className={`btn-primary${done ? ' btn-success' : ''}`}
-        disabled={loading || !weight || !reps}
+        disabled={loading}
         onClick={submit}
       >
         {loading ? 'Сохраняю...' : done ? '✓ Записано!' : 'Записать подход ✓'}
@@ -464,6 +481,10 @@ export default function Workout({ onGoProgress }) {
           plannedWeight={ex.weight}
           repsRange={ex.reps_range}
           rpeRange={ex.rpe_range}
+          lastWeight={ex.last_weight}
+          lastReps={ex.last_reps}
+          lastRpe={ex.last_rpe}
+          suggestedWeight={ex.suggested_weight}
           onLog={handleLog}
         />
       )}

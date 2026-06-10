@@ -6,6 +6,8 @@ import time
 from datetime import date
 from urllib.parse import unquote, parse_qsl
 
+import aiosqlite
+
 from fastapi import FastAPI, HTTPException, Header, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -23,11 +25,13 @@ from database.db import (
     get_food_entry, update_food_entry, delete_food_entry,
     get_tonnage_by_weeks, get_exercise_prs, get_all_time_stats,
     get_nutrition_week_avg, get_daily_nutrition_7d, get_avg_rpe_recent,
-    get_exercise_weight_history, get_user_exercises,
+    get_exercise_weight_history, get_user_exercises, get_last_exercise_set,
     save_workout_analysis, get_workout_analysis,
     get_last_workout_by_day,
     get_frequent_foods,
     get_water_today, add_water_glass,
+    log_weight, get_weight_history,
+    log_measurements, get_latest_measurements, get_measurements_month_ago,
 )
 
 from contextlib import asynccontextmanager
@@ -102,6 +106,40 @@ def validate_init_data(init_data: str) -> int:
     if not user_id:
         raise HTTPException(status_code=401, detail="No user in initData")
     return user_id
+
+
+def _suggested_weight(last_weight: float, last_rpe: float | None) -> float:
+    rpe = last_rpe or 8.0
+    if rpe <= 7.0:
+        factor = 1.05
+    elif rpe <= 8.0:
+        factor = 1.025
+    elif rpe <= 8.5:
+        factor = 1.0
+    else:
+        factor = 0.975
+    raw = last_weight * factor
+    # Round to nearest 2.5
+    return round(round(raw / 2.5) * 2.5, 1)
+
+
+async def enrich_exercises_with_history(user_id: int, exercises: list) -> list:
+    result = []
+    for ex in exercises:
+        last = await get_last_exercise_set(user_id, ex["exercise"])
+        ex_dict = dict(ex)
+        if last:
+            ex_dict["last_weight"] = last["actual_weight"]
+            ex_dict["last_reps"] = last["reps"]
+            ex_dict["last_rpe"] = last["rpe"]
+            ex_dict["suggested_weight"] = _suggested_weight(last["actual_weight"], last["rpe"])
+        else:
+            ex_dict["last_weight"] = None
+            ex_dict["last_reps"] = None
+            ex_dict["last_rpe"] = None
+            ex_dict["suggested_weight"] = ex.get("weight") or None
+        result.append(ex_dict)
+    return result
 
 
 async def get_current_day(user: dict):
@@ -193,6 +231,7 @@ async def workout_plan(x_init_data: str = Header(alias="x-init-data")):
 
     day_type, week_type, exercises = await get_current_day(user)
     active = await get_active_workout(user_id)
+    enriched = await enrich_exercises_with_history(user_id, exercises)
 
     return {
         "day_type": day_type,
@@ -200,7 +239,7 @@ async def workout_plan(x_init_data: str = Header(alias="x-init-data")):
         "week_type": week_type,
         "week_label": WEEK_TYPES.get(week_type, week_type),
         "week_num": user["current_week"],
-        "exercises": exercises,
+        "exercises": enriched,
         "active_workout": dict(active) if active else None,
     }
 
@@ -221,8 +260,9 @@ async def start_workout(x_init_data: str = Header(alias="x-init-data")):
     if not exercises:
         raise HTTPException(status_code=400, detail="No program found")
 
+    enriched = await enrich_exercises_with_history(user_id, exercises)
     workout_id = await create_workout(user_id, today(), day_type, user["current_week"], week_type)
-    return {"workout_id": workout_id, "day_type": day_type, "exercises": exercises}
+    return {"workout_id": workout_id, "day_type": day_type, "exercises": enriched}
 
 
 class LogSetRequest(BaseModel):
@@ -774,6 +814,91 @@ async def exercise_history_endpoint(
     return {"history": history}
 
 
+_MUSCLE_KEYWORDS: list[tuple[list[str], list[str]]] = [
+    # keywords (lowercase, partial)  →  muscle group ids
+    (["жим лёжа", "жим лежа", "жим гантелей", "жим штанги наклон", "отжима"], ["chest", "triceps", "shoulders"]),
+    (["армейский жим", "жим стоя", "жим сидя"], ["shoulders", "triceps"]),
+    (["разводка", "бабочка", "махи в наклоне", "тяга лица", "обратная баб"], ["shoulders", "back"]),
+    (["подтяг", "тяга вертикальн", "тяга горизонт", "тяга штанги в наклоне", "тяга штанги", "ряды с гантел"], ["back", "biceps"]),
+    (["бицепс", "бицепсов", "сгиб руки", "суперсет: бицепс"], ["biceps"]),
+    (["трицепс", "трицепсов", "суперсет: трицепс", "разгибание рук"], ["triceps"]),
+    (["присед", "жим ног", "болгарск", "выпады", "разгибания ног"], ["quads", "glutes"]),
+    (["румынская тяга", "сгибания ног", "становая"], ["hamstrings", "glutes"]),
+    (["подъём на носки", "подъем на носки", "икры"], ["calves"]),
+    (["пресс", "планка", "скручивания"], ["abs"]),
+    (["вис на перекладине"], ["back", "biceps"]),
+]
+
+_MUSCLE_META = {
+    "chest":      {"label": "Грудь",       "group": "upper"},
+    "back":       {"label": "Спина",        "group": "upper"},
+    "shoulders":  {"label": "Плечи",        "group": "upper"},
+    "biceps":     {"label": "Бицепс",       "group": "upper"},
+    "triceps":    {"label": "Трицепс",      "group": "upper"},
+    "abs":        {"label": "Пресс",        "group": "upper"},
+    "quads":      {"label": "Квадрицепсы",  "group": "lower"},
+    "hamstrings": {"label": "Бицепс бедра", "group": "lower"},
+    "glutes":     {"label": "Ягодицы",      "group": "lower"},
+    "calves":     {"label": "Икры",         "group": "lower"},
+}
+
+
+def _exercise_to_muscles(exercise: str) -> list[str]:
+    ex_low = exercise.lower()
+    for keywords, muscles in _MUSCLE_KEYWORDS:
+        if any(k in ex_low for k in keywords):
+            return muscles
+    return []
+
+
+@app.get("/api/progress/muscles")
+async def muscles_endpoint(x_init_data: str = Header(alias="x-init-data")):
+    from datetime import date as date_cls, timedelta
+    user_id = validate_init_data(x_init_data)
+
+    cutoff = str(date_cls.today() - timedelta(days=28))
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT s.exercise, s.actual_weight * s.reps AS vol, w.date
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1 AND w.date >= ? AND s.actual_weight > 0""",
+            (user_id, cutoff),
+        ) as cur:
+            rows = await cur.fetchall()
+
+    tonnage: dict[str, float] = {m: 0.0 for m in _MUSCLE_META}
+    last_date: dict[str, str] = {}
+
+    for row in rows:
+        muscles = _exercise_to_muscles(row["exercise"])
+        for m in muscles:
+            tonnage[m] = tonnage.get(m, 0) + (row["vol"] or 0)
+            prev = last_date.get(m)
+            if not prev or row["date"] > prev:
+                last_date[m] = row["date"]
+
+    max_t = max(tonnage.values()) if any(tonnage.values()) else 1
+    today_str = str(date_cls.today())
+
+    result = []
+    for muscle_id, meta in _MUSCLE_META.items():
+        t = round(tonnage.get(muscle_id, 0))
+        ld = last_date.get(muscle_id)
+        days_since = (date_cls.fromisoformat(today_str) - date_cls.fromisoformat(ld)).days if ld else None
+        result.append({
+            "id": muscle_id,
+            "label": meta["label"],
+            "group": meta["group"],
+            "tonnage_28d": t,
+            "intensity": round(t / max_t, 3),
+            "last_trained": ld,
+            "days_since": days_since,
+        })
+
+    return {"groups": result}
+
+
 # ── Profile ───────────────────────────────────────────────────────────────────
 
 _GOAL_LABELS = {
@@ -835,4 +960,86 @@ async def profile_update(body: ProfileUpdateRequest, x_init_data: str = Header(a
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     await update_user(user_id, **updates)
+    return {"ok": True}
+
+
+# ── Body / Тело ───────────────────────────────────────────────────────────────
+
+@app.get("/api/body")
+async def body_get(x_init_data: str = Header(alias="x-init-data")):
+    user_id = validate_init_data(x_init_data)
+    user = await get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    weight_history = await get_weight_history(user_id, weeks=8)
+    measurements = await get_latest_measurements(user_id)
+    measurements_old = await get_measurements_month_ago(user_id)
+
+    # BMI
+    height_m = (user["height"] or 0) / 100
+    weight = user["weight"] or 0
+    bmi = round(weight / (height_m ** 2), 1) if height_m > 0 else None
+    bmi_label = (
+        "Дефицит" if bmi and bmi < 18.5 else
+        "Норма" if bmi and bmi < 25 else
+        "Избыток" if bmi and bmi < 30 else
+        "Ожирение" if bmi else None
+    )
+
+    def delta(field):
+        if not measurements or not measurements_old:
+            return None
+        cur = measurements.get(field)
+        old = measurements_old.get(field)
+        if cur is None or old is None:
+            return None
+        return round(cur - old, 1)
+
+    return {
+        "current_weight": weight,
+        "weight_history": weight_history,
+        "measurements": {
+            "chest": measurements.get("chest") if measurements else None,
+            "waist": measurements.get("waist") if measurements else None,
+            "bicep": measurements.get("bicep") if measurements else None,
+            "hips": measurements.get("hips") if measurements else None,
+        },
+        "deltas": {
+            "chest": delta("chest"),
+            "waist": delta("waist"),
+            "bicep": delta("bicep"),
+            "hips": delta("hips"),
+        },
+        "bmi": bmi,
+        "bmi_label": bmi_label,
+    }
+
+
+class WeightLogRequest(BaseModel):
+    weight: float = Field(gt=0, lt=500)
+
+
+@app.post("/api/body/weight")
+async def body_log_weight(body: WeightLogRequest, x_init_data: str = Header(alias="x-init-data")):
+    user_id = validate_init_data(x_init_data)
+    await log_weight(user_id, today(), body.weight)
+    await update_user(user_id, weight=body.weight)
+    return {"ok": True, "weight": body.weight}
+
+
+class MeasurementsRequest(BaseModel):
+    chest: float | None = Field(default=None, gt=0)
+    waist: float | None = Field(default=None, gt=0)
+    bicep: float | None = Field(default=None, gt=0)
+    hips: float | None = Field(default=None, gt=0)
+
+
+@app.post("/api/body/measurements")
+async def body_log_measurements(body: MeasurementsRequest, x_init_data: str = Header(alias="x-init-data")):
+    user_id = validate_init_data(x_init_data)
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No measurements provided")
+    await log_measurements(user_id, today(), **updates)
     return {"ok": True}

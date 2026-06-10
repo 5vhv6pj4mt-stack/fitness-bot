@@ -60,6 +60,27 @@ async def init_db():
             except Exception:
                 pass
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS weight_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                weight REAL NOT NULL,
+                UNIQUE(user_id, date)
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS body_measurements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                chest REAL,
+                waist REAL,
+                bicep REAL,
+                hips REAL,
+                UNIQUE(user_id, date)
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS water_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -680,6 +701,67 @@ async def add_water_glass(user_id: int, date: str) -> int:
             return row[0] if row else 1
 
 
+async def log_weight(user_id: int, date: str, weight: float):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO weight_log (user_id, date, weight) VALUES (?,?,?) "
+            "ON CONFLICT(user_id, date) DO UPDATE SET weight=excluded.weight",
+            (user_id, date, weight),
+        )
+        await db.commit()
+
+
+async def get_weight_history(user_id: int, weeks: int = 8) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT date, weight FROM weight_log
+               WHERE user_id=? AND date >= date('now', ? || ' days')
+               ORDER BY date ASC""",
+            (user_id, -(weeks * 7)),
+        ) as cur:
+            return [{"date": r[0], "weight": r[1]} for r in await cur.fetchall()]
+
+
+async def log_measurements(user_id: int, date: str, **kwargs):
+    fields = [k for k in ("chest", "waist", "bicep", "hips") if k in kwargs]
+    if not fields:
+        return
+    sets = ", ".join(f"{f}=excluded.{f}" for f in fields)
+    cols = ", ".join(fields)
+    placeholders = ", ".join("?" for _ in fields)
+    vals = [kwargs[f] for f in fields]
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"INSERT INTO body_measurements (user_id, date, {cols}) VALUES (?,?,{placeholders}) "
+            f"ON CONFLICT(user_id, date) DO UPDATE SET {sets}",
+            [user_id, date] + vals,
+        )
+        await db.commit()
+
+
+async def get_latest_measurements(user_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM body_measurements WHERE user_id=? ORDER BY date DESC LIMIT 1",
+            (user_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def get_measurements_month_ago(user_id: int) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT * FROM body_measurements WHERE user_id=?
+               AND date <= date('now', '-28 days') ORDER BY date DESC LIMIT 1""",
+            (user_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
 async def get_frequent_foods(user_id: int, limit: int = 10) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -846,6 +928,21 @@ async def get_avg_rpe_recent(user_id: int, limit: int = 10) -> float:
         ) as cur:
             row = await cur.fetchone()
             return round(row[0] or 0, 1)
+
+
+async def get_last_exercise_set(user_id: int, exercise: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT s.actual_weight, s.reps, s.rpe
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1 AND s.exercise=? AND s.actual_weight > 0
+               ORDER BY w.date DESC, s.actual_weight DESC
+               LIMIT 1""",
+            (user_id, exercise),
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
 
 
 async def get_exercise_weight_history(user_id: int, exercise: str, limit: int = 8) -> list[dict]:
