@@ -60,6 +60,15 @@ async def init_db():
             except Exception:
                 pass
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS water_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                glasses INTEGER DEFAULT 0,
+                UNIQUE(user_id, date)
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS food_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id INTEGER NOT NULL,
@@ -645,6 +654,30 @@ async def delete_food_entry(entry_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM food_log WHERE id=?", (entry_id,))
         await db.commit()
+
+
+async def get_water_today(user_id: int, date: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT glasses FROM water_log WHERE user_id=? AND date=?", (user_id, date)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else 0
+
+
+async def add_water_glass(user_id: int, date: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO water_log (user_id, date, glasses) VALUES (?,?,1) "
+            "ON CONFLICT(user_id, date) DO UPDATE SET glasses = glasses + 1",
+            (user_id, date),
+        )
+        await db.commit()
+        async with db.execute(
+            "SELECT glasses FROM water_log WHERE user_id=? AND date=?", (user_id, date)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else 1
 
 
 async def get_frequent_foods(user_id: int, limit: int = 10) -> list[dict]:

@@ -242,3 +242,7 @@ button { cursor: pointer; border: none; outline: none; font-family: inherit; fon
   66%  { content: '...'; }
   100% { content: '.'; }
 }
+@keyframes voiceWave {
+  from { transform: scaleY(0.3); }
+  to   { transform: scaleY(1.4); }
+}

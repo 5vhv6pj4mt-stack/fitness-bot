@@ -6,7 +6,7 @@ import time
 from datetime import date
 from urllib.parse import unquote, parse_qsl
 
-from fastapi import FastAPI, HTTPException, Header, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Header, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,7 @@ from database.db import (
     save_workout_analysis, get_workout_analysis,
     get_last_workout_by_day,
     get_frequent_foods,
+    get_water_today, add_water_glass,
 )
 
 from contextlib import asynccontextmanager
@@ -377,6 +378,89 @@ def _detect_meal_type() -> str:
     if hour < 14:   return 'lunch'
     if hour < 18:   return 'snack'
     return 'dinner'
+
+
+WATER_GOAL = 8
+
+
+@app.get("/api/water/today")
+async def water_today(x_init_data: str = Header(alias="x-init-data")):
+    user_id = validate_init_data(x_init_data)
+    glasses = await get_water_today(user_id, today())
+    return {"glasses": glasses, "goal": WATER_GOAL}
+
+
+@app.post("/api/water/add")
+async def water_add(x_init_data: str = Header(alias="x-init-data")):
+    user_id = validate_init_data(x_init_data)
+    glasses = await add_water_glass(user_id, today())
+    return {"glasses": glasses, "goal": WATER_GOAL}
+
+
+@app.post("/api/nutrition/log-photo")
+async def log_food_photo_upload(
+    x_init_data: str = Header(alias="x-init-data"),
+    file: UploadFile = File(...),
+):
+    user_id = validate_init_data(x_init_data)
+    if not file:
+        raise HTTPException(status_code=400, detail="No file")
+    image_bytes = await file.read()
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 10MB)")
+    from services.ai_service import parse_food_photo
+    result = await parse_food_photo(image_bytes)
+    meal_type = _detect_meal_type()
+    entry_id = await log_food(
+        user_id, today(),
+        result.get("description", "Блюдо с фото"),
+        result["calories"], result["protein"], result["carbs"], result["fat"],
+        meal_type=meal_type,
+    )
+    return {
+        "id": entry_id,
+        "meal_type": meal_type,
+        "description": result.get("description", "Блюдо с фото"),
+        "calories": round(result["calories"]),
+        "protein": round(result["protein"], 1),
+        "carbs": round(result["carbs"], 1),
+        "fat": round(result["fat"], 1),
+    }
+
+
+@app.post("/api/nutrition/log-voice")
+async def log_food_voice(
+    x_init_data: str = Header(alias="x-init-data"),
+    file: UploadFile = File(...),
+):
+    user_id = validate_init_data(x_init_data)
+    if not file:
+        raise HTTPException(status_code=400, detail="No file")
+    audio_bytes = await file.read()
+    if len(audio_bytes) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 25MB)")
+    from services.ai_service import transcribe_voice, parse_food
+    text = await transcribe_voice(audio_bytes, filename=file.filename or "voice.webm")
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="Не удалось распознать речь")
+    result = await parse_food(text)
+    meal_type = _detect_meal_type()
+    entry_id = await log_food(
+        user_id, today(),
+        result.get("description", text[:200]),
+        result["calories"], result["protein"], result["carbs"], result["fat"],
+        meal_type=meal_type,
+    )
+    return {
+        "id": entry_id,
+        "meal_type": meal_type,
+        "description": result.get("description", text[:200]),
+        "calories": round(result["calories"]),
+        "protein": round(result["protein"], 1),
+        "carbs": round(result["carbs"], 1),
+        "fat": round(result["fat"], 1),
+        "transcription": text,
+    }
 
 
 @app.get("/api/nutrition")
