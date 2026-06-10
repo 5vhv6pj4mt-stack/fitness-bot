@@ -236,6 +236,21 @@ async def workout_plan(x_init_data: str = Header(alias="x-init-data")):
     active = await get_active_workout(user_id)
     enriched = await enrich_exercises_with_history(user_id, exercises)
 
+    active_data = None
+    if active:
+        active_data = dict(active)
+        sets = await get_workout_sets(active["id"])
+        active_data["logged_sets"] = [
+            {
+                "id": s["id"],
+                "exercise": s["exercise"],
+                "actual_weight": s["actual_weight"],
+                "reps": s["reps"],
+                "rpe": s["rpe"],
+            }
+            for s in sets
+        ]
+
     return {
         "day_type": day_type,
         "day_label": DAY_TYPES.get(day_type, day_type),
@@ -243,7 +258,7 @@ async def workout_plan(x_init_data: str = Header(alias="x-init-data")):
         "week_label": WEEK_TYPES.get(week_type, week_type),
         "week_num": user["current_week"],
         "exercises": enriched,
-        "active_workout": dict(active) if active else None,
+        "active_workout": active_data,
     }
 
 
@@ -277,6 +292,8 @@ class LogSetRequest(BaseModel):
     reps: int = Field(ge=1, le=100)
     rpe: float = Field(ge=0, le=10)
     notes: str | None = Field(None, max_length=500)
+    ex_index: int = Field(default=0, ge=0)
+    set_index: int = Field(default=0, ge=0)
 
 
 @app.post("/api/workout/log-set")
@@ -289,7 +306,7 @@ async def log_set_endpoint(body: LogSetRequest, x_init_data: str = Header(alias=
         body.workout_id, body.exercise, body.set_number,
         body.planned_weight, body.actual_weight, body.reps, body.rpe, body.notes
     )
-    await update_workout_progress(body.workout_id, 0, 0)
+    await update_workout_progress(body.workout_id, body.ex_index, body.set_index)
     return {"ok": True}
 
 

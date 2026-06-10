@@ -450,7 +450,13 @@ function reducer(state, action) {
           exercises: action.plan.exercises,
           exIndex: aw.ex_index ?? 0,
           setIndex: aw.set_index ?? 0,
-          loggedSets: [],
+          loggedSets: (aw.logged_sets || []).map((s) => ({
+            id: s.id,
+            exercise: s.exercise,
+            actual_weight: s.actual_weight,
+            reps: s.reps,
+            rpe: s.rpe,
+          })),
           showRest: false,
           startedAt,
         }
@@ -509,6 +515,9 @@ export default function Workout({ onGoProgress }) {
 
   const handleLog = async ({ weight, reps, rpe, notes }) => {
     const ex = exercises[exIndex]
+    const isLastSet = setIndex + 1 >= ex.sets
+    const nextExIndex = isLastSet ? exIndex + 1 : exIndex
+    const nextSetIndex = isLastSet ? 0 : setIndex + 1
     await api.logSet({
       workout_id: workoutId,
       exercise: ex.exercise,
@@ -518,6 +527,8 @@ export default function Workout({ onGoProgress }) {
       reps,
       rpe,
       notes,
+      ex_index: nextExIndex,
+      set_index: nextSetIndex,
     })
 
     const newSet = { id: `${ex.exercise}-${setIndex}-${Date.now()}`, exercise: ex.exercise, actual_weight: weight, reps, rpe }
