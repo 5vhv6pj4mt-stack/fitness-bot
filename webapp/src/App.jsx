@@ -80,7 +80,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      {tab === 'dashboard' && <Dashboard onGoWorkout={() => setTab('workout')} />}
+      {tab === 'dashboard' && <Dashboard onGoWorkout={() => setTab('workout')} onGoProfile={() => setTab('profile')} />}
       {tab === 'workout' && <Workout onGoProgress={() => setTab('progress')} />}
       {tab === 'nutrition' && <Nutrition />}
       {tab === 'progress' && <Progress />}

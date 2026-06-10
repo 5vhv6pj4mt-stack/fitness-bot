@@ -123,9 +123,10 @@ async def dashboard(x_init_data: str = Header(alias="x-init-data")):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    from datetime import date as date_cls, timedelta
     nutrition = await get_day_nutrition(user_id, today())
     workouts = await get_last_workouts(user_id, 8)
-    day_type, week_type, _ = await get_current_day(user)
+    day_type, week_type, exercises = await get_current_day(user)
 
     workout_history = [
         {
@@ -138,6 +139,16 @@ async def dashboard(x_init_data: str = Header(alias="x-init-data")):
         for w in workouts
     ]
 
+    # Week stats: current week vs previous week
+    today_date = date_cls.today()
+    week_start = today_date - timedelta(days=today_date.weekday())
+    prev_week_start = week_start - timedelta(weeks=1)
+    this_week = [w for w in workouts if w["date"] >= str(week_start)]
+    prev_week = [w for w in workouts if str(prev_week_start) <= w["date"] < str(week_start)]
+    this_tonnage = sum(w["total_tonnage"] or 0 for w in this_week)
+    prev_tonnage = sum(w["total_tonnage"] or 0 for w in prev_week)
+    delta = round(this_tonnage - prev_tonnage)
+
     return {
         "user": {
             "name": user["name"],
@@ -148,6 +159,11 @@ async def dashboard(x_init_data: str = Header(alias="x-init-data")):
             "day_type": day_type,
             "day_label": DAY_TYPES.get(day_type, day_type),
             "week_label": WEEK_TYPES.get(week_type, week_type),
+            "exercises": [
+                {"name": ex["exercise"], "sets": ex["sets"], "reps": ex["reps_range"], "weight": ex["weight"]}
+                for ex in exercises[:4]
+            ],
+            "total_exercises": len(exercises),
         },
         "nutrition_today": nutrition,
         "nutrition_goals": {
@@ -157,6 +173,11 @@ async def dashboard(x_init_data: str = Header(alias="x-init-data")):
             "fat": user["goal_fat"],
         },
         "workout_history": workout_history,
+        "week_stats": {
+            "workouts_count": len(this_week),
+            "tonnage": round(this_tonnage),
+            "delta": delta,
+        },
     }
 
 
