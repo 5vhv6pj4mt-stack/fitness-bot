@@ -11,7 +11,7 @@ from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
 
 from config import BOT_TOKEN
 from database.db import init_db, get_all_onboarded_users, get_meal_reminders
-from handlers import main_menu, nutrition, workout, onboarding, settings, stats, edit
+from handlers import main_menu, nutrition, workout, onboarding, settings, stats, edit, test_video
 from services.scheduler import setup_scheduler, setup_daily_reminders, setup_workout_reminder
 
 logging.basicConfig(
@@ -79,6 +79,7 @@ async def main():
     dp.include_router(edit.router)
     dp.include_router(stats.router)
     dp.include_router(settings.router)
+    dp.include_router(test_video.router)
 
     await set_bot_commands(bot)
 
