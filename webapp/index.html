@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Стать — фитнес</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+      (function() {
+        var attempts = 0;
+        function initWebApp() {
+          attempts++;
+          if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+          } else if (attempts < 5) {
+            setTimeout(initWebApp, 200 * attempts);
+          }
+        }
+        initWebApp();
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
