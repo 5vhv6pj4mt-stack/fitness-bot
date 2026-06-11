@@ -19,12 +19,16 @@ _L_WRIST,    _R_WRIST    = 15, 16
 _L_HIP,      _R_HIP      = 23, 24
 
 
-def _angle(a, b, c) -> float:
-    """Угол в точке b (плечо–локоть–запястье), градусы."""
-    ba = (a[0] - b[0], a[1] - b[1])
-    bc = (c[0] - b[0], c[1] - b[1])
-    dot = ba[0] * bc[0] + ba[1] * bc[1]
-    mag = math.hypot(*ba) * math.hypot(*bc)
+def _angle_3d(a, b, c) -> float:
+    """
+    Угол в точке b по 3D-координатам (x, y, z).
+    Инвариантен к углу камеры — работает корректно при горизонтальном положении тела.
+    """
+    ba = (a[0]-b[0], a[1]-b[1], a[2]-b[2])
+    bc = (c[0]-b[0], c[1]-b[1], c[2]-b[2])
+    dot = ba[0]*bc[0] + ba[1]*bc[1] + ba[2]*bc[2]
+    mag = math.sqrt(ba[0]**2 + ba[1]**2 + ba[2]**2) * \
+          math.sqrt(bc[0]**2 + bc[1]**2 + bc[2]**2)
     if mag < 1e-6:
         return 180.0
     return math.degrees(math.acos(max(-1.0, min(1.0, dot / mag))))
@@ -70,6 +74,7 @@ def analyze_dumbbell_press(video_path: str) -> dict:
         num_poses=1,
         min_pose_detection_confidence=0.5,
         min_tracking_confidence=0.5,
+        output_segmentation_masks=False,
     )
 
     # Обрабатываем каждый 3-й кадр — ускоряет анализ в 3x без потери качества
@@ -93,26 +98,37 @@ def analyze_dumbbell_press(video_path: str) -> dict:
                 timestamp_ms = int(frame_idx * 1000 / fps)
                 result = landmarker.detect_for_video(mp_image, timestamp_ms)
 
-                if not result.pose_landmarks:
+                if not result.pose_landmarks or not result.pose_world_landmarks:
                     continue
 
-                lm = result.pose_landmarks[0]  # первый человек в кадре
+                # Нормализованные координаты — для геометрии в плоскости изображения
+                lm = result.pose_landmarks[0]
+                # World landmarks (метры, 3D) — для угловых измерений, не зависят от камеры
+                wlm = result.pose_world_landmarks[0]
 
-                def pt(idx):
+                def img_pt(idx):
                     return (lm[idx].x * w, lm[idx].y * h)
 
-                l_sh = pt(_L_SHOULDER); r_sh = pt(_R_SHOULDER)
-                l_el = pt(_L_ELBOW);    r_el = pt(_R_ELBOW)
-                l_wr = pt(_L_WRIST);    r_wr = pt(_R_WRIST)
-                l_hi = pt(_L_HIP);      r_hi = pt(_R_HIP)
+                def world_pt(idx):
+                    p = wlm[idx]
+                    return (p.x, p.y, p.z)
 
                 frames_with_pose += 1
 
-                # Углы в локтях
-                left_angles.append(_angle(l_sh, l_el, l_wr))
-                right_angles.append(_angle(r_sh, r_el, r_wr))
+                # Углы в локтях по 3D world-координатам — корректно при любом угле камеры
+                l_sh_w = world_pt(_L_SHOULDER); r_sh_w = world_pt(_R_SHOULDER)
+                l_el_w = world_pt(_L_ELBOW);    r_el_w = world_pt(_R_ELBOW)
+                l_wr_w = world_pt(_L_WRIST);    r_wr_w = world_pt(_R_WRIST)
 
-                # Ширина плеч
+                left_angles.append(_angle_3d(l_sh_w, l_el_w, l_wr_w))
+                right_angles.append(_angle_3d(r_sh_w, r_el_w, r_wr_w))
+
+                # Для траектории и поясницы используем 2D-координаты в изображении
+                l_sh = img_pt(_L_SHOULDER); r_sh = img_pt(_R_SHOULDER)
+                l_el = img_pt(_L_ELBOW);    r_el = img_pt(_R_ELBOW)
+                l_wr = img_pt(_L_WRIST);    r_wr = img_pt(_R_WRIST)
+                l_hi = img_pt(_L_HIP);      r_hi = img_pt(_R_HIP)
+
                 shoulder_width = abs(l_sh[0] - r_sh[0])
 
                 # Траектория: только в верхней точке (угол > 150° — рука выпрямлена)
