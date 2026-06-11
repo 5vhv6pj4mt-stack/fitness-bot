@@ -367,22 +367,17 @@ async def get_exercise_gif(exercise_name: str) -> str | None:
     except Exception:
         english_name = exercise_name
 
+    # Primary: exercisedb.dev (free, no key, same GIF format)
+    result = await _get_gif_exercisedb_free(english_name)
+    if result:
+        return result
+
+    # Fallback: RapidAPI ExerciseDB
     if RAPIDAPI_KEY:
         result = await _get_gif_exercisedb(english_name)
         if result:
             return result
 
-    # fallback — wger статичные изображения
-    try:
-        index = await _get_index()
-        key = english_name.lower()
-        if key in index:
-            return index[key]
-        for name, url in index.items():
-            if key in name or name in key:
-                return url
-    except Exception:
-        pass
     return None
 
 
@@ -407,7 +402,7 @@ async def get_nutrition_advice(totals: dict, goals: dict) -> str:
     )
 
 
-# ── ExerciseDB (RapidAPI) — анимированные GIF ────────────────────────────────
+# ── ExerciseDB GIF — анимированные 3D GIF, единый стиль ─────────────────────
 
 _gif_cache: dict[str, str | None] = {}  # in-memory кэш на сессию
 _GIF_CACHE_FILE = "exercise_gif_cache.json"
@@ -434,6 +429,33 @@ def _save_gif_cache() -> None:
 
 
 _load_gif_cache()
+
+
+async def _get_gif_exercisedb_free(english_name: str) -> str | None:
+    """oss.exercisedb.dev — бесплатно, без ключа, GIF в едином стиле (тёмный фон, 3D-анимация)."""
+    key = english_name.lower().strip()
+
+    if key in _gif_cache:
+        return _gif_cache[key]
+
+    try:
+        import urllib.parse
+        encoded = urllib.parse.quote(key)
+        url = f"https://oss.exercisedb.dev/api/v1/exercises/search?search={encoded}&threshold=0.4&limit=5"
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as s:
+            async with s.get(url) as r:
+                if r.status != 200:
+                    return None
+                data = await r.json()
+
+        items = data.get("data", []) if isinstance(data, dict) else data
+        gif_url = items[0]["gifUrl"] if items else None
+        _gif_cache[key] = gif_url
+        _save_gif_cache()
+        return gif_url
+    except Exception:
+        return None
 
 
 async def _get_gif_exercisedb(english_name: str) -> str | None:
@@ -464,44 +486,3 @@ async def _get_gif_exercisedb(english_name: str) -> str | None:
     except Exception:
         return None
 
-
-# ── Кэш wger (fallback, статичные изображения) ───────────────────────────────
-
-_exercise_index: dict[str, str] | None = None
-_index_lock = None
-
-
-async def _build_exercise_index() -> dict[str, str]:
-    index: dict[str, str] = {}
-    timeout = aiohttp.ClientTimeout(total=30)
-    async with aiohttp.ClientSession(timeout=timeout) as s:
-        async with s.get("https://wger.de/api/v2/exerciseimage/?format=json&limit=300&is_main=True") as r:
-            img_data = await r.json()
-        id_to_url: dict[int, str] = {img["exercise"]: img["image"] for img in img_data.get("results", [])}
-
-        url: str | None = "https://wger.de/api/v2/exerciseinfo/?format=json&limit=100"
-        while url:
-            async with s.get(url) as r:
-                page = await r.json()
-            for ex in page.get("results", []):
-                if ex["id"] not in id_to_url:
-                    continue
-                en = [t for t in ex.get("translations", []) if t["language"] == 2]
-                if en:
-                    index[en[0]["name"].lower()] = id_to_url[ex["id"]]
-            url = page.get("next")
-    return index
-
-
-async def _get_index() -> dict[str, str]:
-    global _exercise_index, _index_lock
-    import asyncio
-    if _index_lock is None:
-        _index_lock = asyncio.Lock()
-    async with _index_lock:
-        if _exercise_index is None:
-            try:
-                _exercise_index = await _build_exercise_index()
-            except Exception:
-                _exercise_index = {}
-    return _exercise_index

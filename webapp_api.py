@@ -1248,5 +1248,7 @@ async def exercise_info_endpoint(name: str, x_init_data: str = Header(alias="x-i
         "technique": technique if isinstance(technique, str) else None,
         "image_url": image_url if isinstance(image_url, str) else None,
     }
-    _exercise_info_cache[name] = result
+    # кэшируем только если оба поля получены — иначе повторим попытку
+    if result["technique"] and result["image_url"]:
+        _exercise_info_cache[name] = result
     return result
