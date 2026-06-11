@@ -1,4 +1,5 @@
 """Анализ техники жима гантелей лёжа через MediaPipe Pose (Tasks API)."""
+import logging
 import math
 import os
 import cv2
@@ -6,6 +7,8 @@ import mediapipe as mp
 import numpy as np
 from mediapipe.tasks.python import vision as mp_vision
 from mediapipe.tasks.python.core.base_options import BaseOptions
+
+log = logging.getLogger(__name__)
 
 _MODEL_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
@@ -106,6 +109,12 @@ def analyze_dumbbell_press(video_path: str) -> dict:
                 # World landmarks (метры, 3D) — для угловых измерений, не зависят от камеры
                 wlm = result.pose_world_landmarks[0]
 
+                # Пропускаем кадры где ключевые точки не видны
+                VIS = 0.4
+                key_ids = [_L_SHOULDER, _R_SHOULDER, _L_ELBOW, _R_ELBOW, _L_WRIST, _R_WRIST]
+                if any(lm[i].visibility < VIS for i in key_ids):
+                    continue
+
                 def img_pt(idx):
                     return (lm[idx].x * w, lm[idx].y * h)
 
@@ -120,8 +129,10 @@ def analyze_dumbbell_press(video_path: str) -> dict:
                 l_el_w = world_pt(_L_ELBOW);    r_el_w = world_pt(_R_ELBOW)
                 l_wr_w = world_pt(_L_WRIST);    r_wr_w = world_pt(_R_WRIST)
 
-                left_angles.append(_angle_3d(l_sh_w, l_el_w, l_wr_w))
-                right_angles.append(_angle_3d(r_sh_w, r_el_w, r_wr_w))
+                la = _angle_3d(l_sh_w, l_el_w, l_wr_w)
+                ra = _angle_3d(r_sh_w, r_el_w, r_wr_w)
+                left_angles.append(la)
+                right_angles.append(ra)
 
                 # Для траектории и поясницы используем 2D-координаты в изображении
                 l_sh = img_pt(_L_SHOULDER); r_sh = img_pt(_R_SHOULDER)
@@ -156,9 +167,19 @@ def analyze_dumbbell_press(video_path: str) -> dict:
             ),
         }
 
-    left_min  = float(np.min(left_angles))
-    right_min = float(np.min(right_angles))
+    # 5-й перцентиль устойчив к единичным шумовым кадрам с аномальными углами
+    left_min  = float(np.percentile(left_angles,  5))
+    right_min = float(np.percentile(right_angles, 5))
     best_min  = max(left_min, right_min)  # глубина = слабейшая рука
+
+    log.info(
+        "press analysis: frames=%d  L_min=%.1f L_max=%.1f L_mean=%.1f  "
+        "R_min=%.1f R_max=%.1f R_mean=%.1f  p5_L=%.1f p5_R=%.1f",
+        frames_with_pose,
+        float(np.min(left_angles)),  float(np.max(left_angles)),  float(np.mean(left_angles)),
+        float(np.min(right_angles)), float(np.max(right_angles)), float(np.mean(right_angles)),
+        left_min, right_min,
+    )
 
     depth = _depth_label(best_min)
 
