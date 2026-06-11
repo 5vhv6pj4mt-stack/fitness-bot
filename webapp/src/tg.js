@@ -47,9 +47,17 @@ const DARK_OVERRIDES = {
   '--tg-theme-link-color': '#0a84ff',
 }
 
+function safeStorage(key, value) {
+  try {
+    if (value === undefined) return localStorage.getItem(key)
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value)
+  } catch { return null }
+}
+
 export function applyColorScheme() {
   const tg = getTg()
-  const override = localStorage.getItem('theme')
+  const override = safeStorage('theme')
   const root = document.documentElement
 
   if (override === 'dark') {
@@ -66,19 +74,15 @@ export function applyColorScheme() {
   }
 
   tg?.onEvent?.('themeChanged', () => {
-    if (!localStorage.getItem('theme')) applyColorScheme()
+    if (!safeStorage('theme')) applyColorScheme()
   })
 }
 
 export function setThemeOverride(scheme) {
-  if (scheme) {
-    localStorage.setItem('theme', scheme)
-  } else {
-    localStorage.removeItem('theme')
-  }
+  safeStorage('theme', scheme || null)
   applyColorScheme()
 }
 
 export function getThemeOverride() {
-  return localStorage.getItem('theme') || null
+  return safeStorage('theme') || null
 }
