@@ -72,6 +72,9 @@ def analyze_dumbbell_press(video_path: str) -> dict:
         min_tracking_confidence=0.5,
     )
 
+    # Обрабатываем каждый 3-й кадр — ускоряет анализ в 3x без потери качества
+    FRAME_STEP = 3
+
     try:
         with mp_vision.PoseLandmarker.create_from_options(options) as landmarker:
             frame_idx = 0
@@ -80,12 +83,15 @@ def analyze_dumbbell_press(video_path: str) -> dict:
                 if not ret:
                     break
 
+                frame_idx += 1
+                if frame_idx % FRAME_STEP != 0:
+                    continue
+
                 h, w = frame.shape[:2]
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
                 timestamp_ms = int(frame_idx * 1000 / fps)
                 result = landmarker.detect_for_video(mp_image, timestamp_ms)
-                frame_idx += 1
 
                 if not result.pose_landmarks:
                     continue

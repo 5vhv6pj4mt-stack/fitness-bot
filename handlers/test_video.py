@@ -126,7 +126,7 @@ async def handle_video_for_analysis(message: Message, bot: Bot):
             except OSError:
                 pass
 
-    await status_msg.edit_text("Анализирую кадры... ⏳")
+    await status_msg.edit_text("Анализирую кадры... ⏳ (~30–90 сек)")
     async with aiohttp.ClientSession() as session:
         for attempt in range(POLL_MAX):
             await asyncio.sleep(POLL_INTERVAL)
@@ -144,8 +144,8 @@ async def handle_video_for_analysis(message: Message, bot: Bot):
 
             status = result.get("status")
             if status in ("pending", "processing"):
-                if attempt == 5:
-                    await status_msg.edit_text("Анализирую кадры... ⏳ (обычно 10–30 сек)")
+                if attempt == 20:
+                    await status_msg.edit_text("Анализирую кадры... ⏳ Ещё немного, обрабатываю видео на CPU...")
                 continue
 
             if status == "done":
