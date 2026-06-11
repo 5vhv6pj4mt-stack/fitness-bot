@@ -114,7 +114,10 @@ export default function Profile({ onBack }) {
 
   const load = () => {
     api.profileGet()
-      .then(setData)
+      .then(d => {
+        setData(d)
+        localStorage.setItem('press_analysis_enabled', d.press_analysis_enabled ? '1' : '0')
+      })
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false))
   }
@@ -284,6 +287,27 @@ export default function Profile({ onBack }) {
           <div className="sr-icon" style={{ background: 'rgba(48,209,88,.12)' }}>🌙</div>
           <div className="sr-label">Вечерний итог дня</div>
           <Toggle on={!!data.notif_evening} onChange={(v) => save('notif_evening', v)} />
+        </div>
+      </div>
+
+      {/* Экспериментальное */}
+      <div className="settings-group">
+        <div className="sg-title">Экспериментальное</div>
+        <div className="sr">
+          <div className="sr-icon" style={{ background: 'rgba(48,209,88,.12)' }}>📹</div>
+          <div style={{ flex: 1 }}>
+            <div className="sr-label">Анализ техники жима гантелей</div>
+            <div style={{ fontSize: 11, color: 'var(--hint)', marginTop: 2 }}>
+              Загрузи видео — AI оценит глубину, симметрию и траекторию
+            </div>
+          </div>
+          <Toggle
+            on={!!data.press_analysis_enabled}
+            onChange={(v) => {
+              localStorage.setItem('press_analysis_enabled', v ? '1' : '0')
+              save('press_analysis_enabled', v)
+            }}
+          />
         </div>
       </div>
 

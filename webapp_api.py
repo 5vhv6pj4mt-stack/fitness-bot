@@ -2,8 +2,11 @@ import hmac
 import hashlib
 import json
 import logging
+import os
 import time
+import uuid
 from datetime import date
+from pathlib import Path
 from urllib.parse import unquote, parse_qsl
 
 import aiosqlite
@@ -12,7 +15,7 @@ from fastapi import FastAPI, HTTPException, Header, BackgroundTasks, UploadFile,
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from config import BOT_TOKEN, DB_PATH
+from config import BOT_TOKEN, DB_PATH, TEMP_VIDEO_DIR, QUEUE_DIR
 
 logging.basicConfig(level=logging.INFO)
 from database.db import (
@@ -34,7 +37,8 @@ from database.db import (
     log_measurements, get_latest_measurements, get_measurements_month_ago,
     get_week_workouts, get_week_nutrition_avg,
     update_exercise_weight,
-    delete_workout_set, recalculate_workout_totals, get_recent_workouts,
+    delete_workout_set, update_workout_set, recalculate_workout_totals, get_recent_workouts,
+    save_press_analysis,
 )
 
 from contextlib import asynccontextmanager
@@ -42,6 +46,9 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app):
     await init_db()
+    Path(TEMP_VIDEO_DIR).mkdir(parents=True, exist_ok=True)
+    for _sub in ("pending", "processing", "done"):
+        (Path(QUEUE_DIR) / _sub).mkdir(parents=True, exist_ok=True)
     yield
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
@@ -471,6 +478,35 @@ async def recent_workouts(x_init_data: str = Header(alias="x-init-data")):
             ],
         })
     return {"workouts": result}
+
+
+class UpdateSetRequest(BaseModel):
+    actual_weight: float
+    reps: int
+    rpe: float = 8.0
+    notes: str | None = None
+
+
+@app.patch("/api/workout/set/{set_id}")
+async def patch_set(
+    set_id: int,
+    body: UpdateSetRequest,
+    x_init_data: str = Header(alias="x-init-data"),
+):
+    user_id = validate_init_data(x_init_data)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT w.user_id, ws.workout_id FROM workout_sets ws JOIN workouts w ON w.id=ws.workout_id WHERE ws.id=?",
+            (set_id,)
+        ) as cur:
+            row = await cur.fetchone()
+    if not row or row["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    workout_id = row["workout_id"]
+    await update_workout_set(set_id, body.actual_weight, body.reps, body.rpe, body.notes)
+    await recalculate_workout_totals(workout_id)
+    return {"ok": True, "workout_id": workout_id}
 
 
 @app.delete("/api/workout/set/{set_id}")
@@ -1132,6 +1168,7 @@ async def profile_get(x_init_data: str = Header(alias="x-init-data")):
         "notif_breakfast": bool(user.get("notif_breakfast", 1)),
         "notif_workout": bool(user.get("notif_workout", 1)),
         "notif_evening": bool(user.get("notif_evening", 0)),
+        "press_analysis_enabled": bool(user.get("press_analysis_enabled", 0)),
         "created_at": user.get("created_at", ""),
     }
 
@@ -1150,6 +1187,7 @@ class ProfileUpdateRequest(BaseModel):
     notif_breakfast: bool | None = None
     notif_workout: bool | None = None
     notif_evening: bool | None = None
+    press_analysis_enabled: bool | None = None
     utc_offset: int | None = Field(default=None, ge=-12, le=14)
 
 
@@ -1251,6 +1289,74 @@ async def body_log_measurements(body: MeasurementsRequest, x_init_data: str = He
         raise HTTPException(status_code=400, detail="No measurements provided")
     await log_measurements(user_id, today(), **updates)
     return {"ok": True}
+
+
+MAX_VIDEO_SIZE = 20 * 1024 * 1024  # 20 МБ
+
+_PENDING_DIR    = Path(QUEUE_DIR) / "pending"
+_PROCESSING_DIR = Path(QUEUE_DIR) / "processing"
+_DONE_DIR       = Path(QUEUE_DIR) / "done"
+
+
+@app.post("/api/analyze_dumbbell_press")
+async def analyze_dumbbell_press_endpoint(
+    video: UploadFile = File(...),
+    set_id: int | None = None,
+    x_init_data: str = Header(alias="x-init-data"),
+):
+    tg_user_id = validate_init_data(x_init_data)
+
+    data = await video.read(MAX_VIDEO_SIZE + 1)
+    if len(data) > MAX_VIDEO_SIZE:
+        raise HTTPException(status_code=413, detail="Видео слишком большое — максимум 20 МБ")
+
+    task_id = uuid.uuid4().hex
+    ext = Path(video.filename or "video.mp4").suffix or ".mp4"
+    video_path = str(Path(TEMP_VIDEO_DIR) / f"{task_id}{ext}")
+
+    with open(video_path, "wb") as f:
+        f.write(data)
+
+    task = {
+        "task_id":    task_id,
+        "user_id":    tg_user_id,
+        "set_id":     set_id,
+        "video_path": video_path,
+    }
+    try:
+        (_PENDING_DIR / f"{task_id}.json").write_text(
+            json.dumps(task, ensure_ascii=False), encoding="utf-8"
+        )
+    except Exception:
+        os.remove(video_path)
+        raise
+
+    return {"task_id": task_id}
+
+
+@app.get("/api/press_analysis_status/{task_id}")
+async def press_analysis_status(task_id: str, x_init_data: str = Header(alias="x-init-data")):
+    validate_init_data(x_init_data)
+
+    # Допускаем только hex-символы — защита от path traversal
+    if not all(c in "0123456789abcdef" for c in task_id) or len(task_id) != 32:
+        raise HTTPException(status_code=400, detail="Invalid task_id")
+
+    done_file = _DONE_DIR / f"{task_id}.json"
+    if done_file.exists():
+        try:
+            result = json.loads(done_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {"status": "processing"}
+        return {"status": "done", "result": result}
+
+    if (_PROCESSING_DIR / f"{task_id}.json").exists():
+        return {"status": "processing"}
+
+    if (_PENDING_DIR / f"{task_id}.json").exists():
+        return {"status": "pending"}
+
+    return {"status": "not_found"}
 
 
 _exercise_info_cache: dict[str, dict] = {}
