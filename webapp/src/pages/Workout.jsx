@@ -135,14 +135,17 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
     if (!weight || !reps) return
     setLoading(true)
     haptic('medium')
-    await onLog({ weight, reps, rpe: parseFloat(rpe) || 8, notes: notes.trim() || null })
-    setDone(true)
-    setTimeout(() => setDone(false), 700)
-    setReps(initReps)
-    setRpe('8')
-    setNotes('')
-    setLoading(false)
-    if (restSecs > 0) startRest(restSecs)
+    try {
+      await onLog({ weight, reps, rpe: parseFloat(rpe) || 8, notes: notes.trim() || null })
+      setDone(true)
+      setTimeout(() => setDone(false), 700)
+      setReps(initReps)
+      setRpe('8')
+      setNotes('')
+      if (restSecs > 0) startRest(restSecs)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -254,6 +257,7 @@ function FinishScreen({ result, onBack, onGoProgress }) {
       } catch {
         clearInterval(intervalRef.current)
         setAnalysisLoading(false)
+        setAnalysis('Анализ недоступен — попробуй открыть тренировку позже.')
       }
     }
     poll()

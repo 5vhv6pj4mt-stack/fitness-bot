@@ -85,6 +85,15 @@ async def health():
     return {"status": "ok"}
 
 
+def _cap_kbju(result: dict) -> dict:
+    """Ограничивает значения КБЖУ разумными пределами на случай ошибки AI."""
+    caps = {"calories": 3000, "protein": 300, "carbs": 300, "fat": 300}
+    for k, cap in caps.items():
+        if k in result:
+            result[k] = max(0.0, min(float(result[k]), cap))
+    return result
+
+
 def validate_init_data(init_data: str) -> int:
     """Проверяет Telegram initData и возвращает user_id."""
     if not init_data:
@@ -539,7 +548,7 @@ async def log_food_photo_upload(
     if len(image_bytes) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 10MB)")
     from services.ai_service import parse_food_photo
-    result = await parse_food_photo(image_bytes)
+    result = _cap_kbju(await parse_food_photo(image_bytes))
     meal_type = _detect_meal_type()
     entry_id = await log_food(
         user_id, today(),
@@ -573,7 +582,7 @@ async def log_food_voice(
     text = await transcribe_voice(audio_bytes, filename=file.filename or "voice.webm")
     if not text.strip():
         raise HTTPException(status_code=422, detail="Не удалось распознать речь")
-    result = await parse_food(text)
+    result = _cap_kbju(await parse_food(text))
     meal_type = _detect_meal_type()
     entry_id = await log_food(
         user_id, today(),
@@ -651,7 +660,7 @@ class LogFoodRequest(BaseModel):
 async def log_food_endpoint(body: LogFoodRequest, x_init_data: str = Header(alias="x-init-data")):
     user_id = validate_init_data(x_init_data)
     from services.ai_service import parse_food
-    result = await parse_food(body.text)
+    result = _cap_kbju(await parse_food(body.text))
     meal_type = _detect_meal_type()
     entry_id = await log_food(
         user_id, today(),
@@ -685,7 +694,7 @@ async def update_food_endpoint(
     if not entry or entry["user_id"] != user_id:
         raise HTTPException(status_code=404, detail="Entry not found")
     from services.ai_service import parse_food
-    result = await parse_food(body.text)
+    result = _cap_kbju(await parse_food(body.text))
     desc = result.get("description", body.text[:300])
     await update_food_entry(
         entry_id, desc,
@@ -813,7 +822,7 @@ async def log_template(body: LogFoodRequest, x_init_data: str = Header(alias="x-
     """Log a food using a pre-parsed template (skip AI parsing, use stored КБЖУ)."""
     user_id = validate_init_data(x_init_data)
     from services.ai_service import parse_food
-    result = await parse_food(body.text)
+    result = _cap_kbju(await parse_food(body.text))
     meal_type = _detect_meal_type()
     entry_id = await log_food(
         user_id, today(),

@@ -93,6 +93,8 @@ def _fix_json_strings(s: str) -> str:
     return ''.join(result)
 
 
+_KBJU_CAPS = {"calories": (0, 3000), "protein": (0, 300), "carbs": (0, 300), "fat": (0, 300)}
+
 def _extract_json(content: str) -> dict:
     if "```" in content:
         content = content.split("```")[1].replace("json", "").strip()
@@ -100,7 +102,9 @@ def _extract_json(content: str) -> dict:
     data = json.loads(content)
     for key in ("calories", "protein", "carbs", "fat"):
         if key in data:
-            data[key] = float(str(data[key]).replace(",", ".").split()[0])
+            val = float(str(data[key]).replace(",", ".").split()[0])
+            lo, hi = _KBJU_CAPS[key]
+            data[key] = max(lo, min(hi, val))
     return data
 
 

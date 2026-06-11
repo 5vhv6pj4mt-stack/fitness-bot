@@ -226,7 +226,7 @@ async def get_top_exercises(user_id: int, n: int = 6) -> list[str]:
         async with db.execute('''
             SELECT ws.exercise, COUNT(DISTINCT w.id) as sessions
             FROM workout_sets ws JOIN workouts w ON ws.workout_id=w.id
-            WHERE w.user_id=? AND w.is_finished=1 AND ws.actual_weight > 0
+            WHERE w.user_id=? AND w.is_finished=1 AND ws.actual_weight >= 0
             GROUP BY ws.exercise HAVING sessions >= 2
             ORDER BY sessions DESC LIMIT ?
         ''', (user_id, n)) as cur:
@@ -239,7 +239,7 @@ async def get_exercise_history(user_id: int, exercise: str, limit: int = 15) -> 
         async with db.execute('''
             SELECT w.date, MAX(ws.actual_weight) as max_weight
             FROM workout_sets ws JOIN workouts w ON ws.workout_id=w.id
-            WHERE w.user_id=? AND ws.exercise=? AND w.is_finished=1 AND ws.actual_weight > 0
+            WHERE w.user_id=? AND ws.exercise=? AND w.is_finished=1 AND ws.actual_weight >= 0
             GROUP BY w.id, w.date ORDER BY w.date DESC LIMIT ?
         ''', (user_id, exercise, limit)) as cur:
             rows = await cur.fetchall()
@@ -602,7 +602,7 @@ async def get_exercise_prs(user_id: int, limit: int = 6) -> list[dict]:
         async with db.execute(
             """SELECT s.exercise, MAX(s.actual_weight) as max_weight, s.reps
                FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE w.user_id=? AND w.is_finished=1 AND s.actual_weight > 0
+               WHERE w.user_id=? AND w.is_finished=1 AND s.actual_weight >= 0
                GROUP BY s.exercise ORDER BY max_weight DESC LIMIT ?""",
             (user_id, limit)
         ) as cur:
@@ -926,7 +926,7 @@ async def get_muscle_volume(user_id: int, days: int = 28) -> list[dict]:
         async with db.execute(
             """SELECT s.exercise, SUM(s.actual_weight * s.reps) as volume
                FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE w.user_id=? AND w.is_finished=1 AND s.actual_weight > 0
+               WHERE w.user_id=? AND w.is_finished=1 AND s.actual_weight >= 0
                  AND w.date >= date('now', ? || ' days')
                GROUP BY s.exercise""",
             (user_id, f"-{days}")
@@ -994,7 +994,7 @@ async def get_last_exercise_set(user_id: int, exercise: str) -> dict | None:
         async with db.execute(
             """SELECT s.actual_weight, s.reps, s.rpe
                FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE w.user_id=? AND w.is_finished=1 AND s.exercise=? AND s.actual_weight > 0
+               WHERE w.user_id=? AND w.is_finished=1 AND s.exercise=? AND s.actual_weight >= 0
                ORDER BY w.date DESC, s.actual_weight DESC
                LIMIT 1""",
             (user_id, exercise),
@@ -1008,7 +1008,7 @@ async def get_exercise_weight_history(user_id: int, exercise: str, limit: int = 
         async with db.execute(
             """SELECT w.date, MAX(s.actual_weight) as weight
                FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE w.user_id=? AND w.is_finished=1 AND s.exercise=? AND s.actual_weight > 0
+               WHERE w.user_id=? AND w.is_finished=1 AND s.exercise=? AND s.actual_weight >= 0
                GROUP BY w.id ORDER BY w.date DESC LIMIT ?""",
             (user_id, exercise, limit)
         ) as cur:
@@ -1021,7 +1021,7 @@ async def get_user_exercises(user_id: int) -> list[str]:
         async with db.execute(
             """SELECT DISTINCT s.exercise
                FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE w.user_id=? AND w.is_finished=1 AND s.actual_weight > 0
+               WHERE w.user_id=? AND w.is_finished=1 AND s.actual_weight >= 0
                ORDER BY s.exercise""",
             (user_id,)
         ) as cur:
@@ -1033,7 +1033,7 @@ async def get_week_exercise_weights(user_id: int, week_start: str, week_end: str
         async with db.execute(
             """SELECT s.exercise, MAX(s.actual_weight)
                FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
-               WHERE w.user_id=? AND w.is_finished=1 AND w.date BETWEEN ? AND ? AND s.actual_weight > 0
+               WHERE w.user_id=? AND w.is_finished=1 AND w.date BETWEEN ? AND ? AND s.actual_weight >= 0
                GROUP BY s.exercise""",
             (user_id, week_start, week_end)
         ) as cur:
