@@ -203,7 +203,8 @@ def analyze_dumbbell_press(video_path: str) -> dict:
     elif depth == "shallow":
         recommendation = "Опускай гантели ниже — увеличь амплитуду для лучшей нагрузки на грудь."
     elif symmetry_warning:
-        recommendation = "Работай над симметрией: следи чтобы обе руки двигались одинаково."
+        weaker = "левую" if left_min > right_min else "правую"
+        recommendation = f"Уделяй внимание {weaker} руке — опускай её глубже для выравнивания амплитуды."
     elif trajectory_warning:
         recommendation = "Контролируй траекторию: запястья должны двигаться строго вертикально."
     elif back_warning:
