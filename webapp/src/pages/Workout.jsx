@@ -49,37 +49,33 @@ function ExerciseInfoPanel({ exercise }) {
   const steps = info.technique ? info.technique.split('\n').filter(Boolean) : []
 
   return (
-    <div style={{ background: 'var(--bg)', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-        {info.image_url && (
+    <div style={{ background: 'var(--bg)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
+      {info.image_url && (
+        <div style={{ background: '#111', display: 'flex', justifyContent: 'center' }}>
           <img
             src={info.image_url}
             alt={exercise}
-            style={{
-              width: 72, height: 72, objectFit: 'contain',
-              borderRadius: 8, flexShrink: 0,
-              background: 'var(--bg2)',
-            }}
+            style={{ width: '100%', maxHeight: 220, objectFit: 'contain', display: 'block' }}
           />
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {info.loading ? (
-            <div style={{ color: 'var(--hint)', fontSize: 13, paddingTop: 4 }}>Загружаем технику...</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {steps.map((line, i) => (
-                <div key={i} style={{ display: 'flex', gap: 7, fontSize: 12, lineHeight: 1.5 }}>
-                  <span style={{ color: 'var(--accent)', fontWeight: 700, flexShrink: 0, minWidth: 16 }}>
-                    {line.match(/^\d+\./) ? line.match(/^\d+\./)[0] : '•'}
-                  </span>
-                  <span style={{ color: 'var(--text)' }}>
-                    {line.replace(/^\d+\.\s*/, '')}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
+      )}
+      <div style={{ padding: '10px 12px' }}>
+        {info.loading ? (
+          <div style={{ color: 'var(--hint)', fontSize: 13 }}>Загружаем технику...</div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {steps.map((line, i) => (
+              <div key={i} style={{ display: 'flex', gap: 7, fontSize: 12, lineHeight: 1.5 }}>
+                <span style={{ color: 'var(--accent)', fontWeight: 700, flexShrink: 0, minWidth: 16 }}>
+                  {line.match(/^\d+\./) ? line.match(/^\d+\./)[0] : '•'}
+                </span>
+                <span style={{ color: 'var(--text)' }}>
+                  {line.replace(/^\d+\.\s*/, '')}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

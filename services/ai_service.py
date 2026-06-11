@@ -431,6 +431,20 @@ def _save_gif_cache() -> None:
 _load_gif_cache()
 
 
+def _best_match(query: str, items: list) -> str | None:
+    """Выбирает GIF с максимальным совпадением ключевых слов запроса."""
+    if not items:
+        return None
+    tokens = set(query.lower().split())
+    best, best_score = items[0], -1
+    for item in items:
+        name_tokens = set(item.get("name", "").lower().split())
+        score = len(tokens & name_tokens)
+        if score > best_score:
+            best_score, best = score, item
+    return best.get("gifUrl")
+
+
 async def _get_gif_exercisedb_free(english_name: str) -> str | None:
     """oss.exercisedb.dev — бесплатно, без ключа, GIF в едином стиле (тёмный фон, 3D-анимация)."""
     key = english_name.lower().strip()
@@ -441,7 +455,7 @@ async def _get_gif_exercisedb_free(english_name: str) -> str | None:
     try:
         import urllib.parse
         encoded = urllib.parse.quote(key)
-        url = f"https://oss.exercisedb.dev/api/v1/exercises/search?search={encoded}&threshold=0.4&limit=5"
+        url = f"https://oss.exercisedb.dev/api/v1/exercises/search?search={encoded}&threshold=0.4&limit=10"
         timeout = aiohttp.ClientTimeout(total=10)
         async with aiohttp.ClientSession(timeout=timeout) as s:
             async with s.get(url) as r:
@@ -450,7 +464,7 @@ async def _get_gif_exercisedb_free(english_name: str) -> str | None:
                 data = await r.json()
 
         items = data.get("data", []) if isinstance(data, dict) else data
-        gif_url = items[0]["gifUrl"] if items else None
+        gif_url = _best_match(key, items)
         _gif_cache[key] = gif_url
         _save_gif_cache()
         return gif_url
