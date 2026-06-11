@@ -101,7 +101,7 @@ def validate_init_data(init_data: str) -> int:
         raise HTTPException(status_code=401, detail="Invalid initData")
 
     auth_date = int(params.get("auth_date", 0))
-    if abs(int(time.time()) - auth_date) > 3600:
+    if abs(int(time.time()) - auth_date) > 86400:  # 24ч — десктоп может держать сессию долго
         raise HTTPException(status_code=401, detail="initData expired")
 
     user_data = json.loads(params.get("user", "{}"))

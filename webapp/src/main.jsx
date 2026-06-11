@@ -14,13 +14,13 @@ function mount() {
   )
 }
 
-// Ждём пока Telegram WebApp загрузится и заполнит initData.
-// На десктопе и при первом запуске на Android это занимает несколько итераций.
+// Ждём появления window.Telegram.WebApp. На мобильных он инжектируется
+// асинхронно, на десктопе обычно сразу. Монтируем при первой возможности.
 function waitAndMount(attempt = 0) {
-  if (window.Telegram?.WebApp?.initData || attempt >= 7) {
+  if (window.Telegram?.WebApp || attempt >= 8) {
     mount()
   } else {
-    setTimeout(() => waitAndMount(attempt + 1), 150 * (attempt + 1))
+    setTimeout(() => waitAndMount(attempt + 1), 100 * (attempt + 1))
   }
 }
 
