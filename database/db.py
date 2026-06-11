@@ -1,6 +1,26 @@
 import aiosqlite
 from config import DB_PATH
 
+# Нормализация названий упражнений: е → ё в известных словах
+_EYO_FIXES = {
+    'лежа':   'лёжа',
+    'лежу':   'лёжу',
+    'подъем': 'подъём',
+    'подъема':'подъёма',
+    'жестк':  'жёстк',
+    'тяжел':  'тяжёл',
+}
+
+def normalize_exercise(name: str) -> str:
+    """Приводит название упражнения к каноническому написанию с ё."""
+    if not name:
+        return name
+    result = name
+    for wrong, right in _EYO_FIXES.items():
+        result = result.replace(wrong, right)
+        result = result.replace(wrong.capitalize(), right.capitalize())
+    return result
+
 
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
@@ -206,7 +226,7 @@ async def save_user_program(user_id: int, program: list[dict]):
                 INSERT INTO user_program (user_id, week_type, day_type, order_num, exercise, sets, reps_range, weight, rpe_range, rest)
                 VALUES (?,?,?,?,?,?,?,?,?,?)
             """, (user_id, ex["week_type"], ex["day_type"], ex.get("order_num", 0),
-                  ex["exercise"], ex["sets"], ex["reps_range"],
+                  normalize_exercise(ex["exercise"]), ex["sets"], ex["reps_range"],
                   ex.get("weight", 0), ex.get("rpe_range", ""), ex.get("rest", "1м30с")))
         await db.commit()
 
@@ -421,7 +441,7 @@ async def save_set(workout_id: int, exercise: str, set_number: int,
     async with aiosqlite.connect(DB_PATH) as db:
         cur = await db.execute(
             "INSERT INTO workout_sets (workout_id, exercise, set_number, planned_weight, actual_weight, reps, rpe, notes) VALUES (?,?,?,?,?,?,?,?)",
-            (workout_id, exercise, set_number, planned_weight, actual_weight, reps, rpe, notes)
+            (workout_id, normalize_exercise(exercise), set_number, planned_weight, actual_weight, reps, rpe, notes)
         )
         await db.commit()
         return cur.lastrowid
