@@ -3,6 +3,23 @@ import { getInitData } from './tg'
 const BASE = '/fitness/api'
 const TIMEOUT_MS = 15000
 
+export function friendlyError(e) {
+  const msg = (e?.message || '').toLowerCase()
+  if (msg.includes('abort') || msg.includes('не отвечает') || msg.includes('timeout'))
+    return 'Сервер думает слишком долго — попробуй ещё раз'
+  if (msg.includes('network') || msg.includes('fetch') || msg.includes('failed to fetch'))
+    return 'Проверь интернет-соединение'
+  if (msg.includes('500') || msg.includes('internal server'))
+    return 'Сервер временно не работает — попробуй через минуту'
+  if (msg.includes('401') || msg.includes('initdata') || msg.includes('unauthorized'))
+    return 'Ошибка авторизации — закрой и открой приложение заново'
+  if (msg.includes('404'))
+    return 'Данные не найдены'
+  if (msg.includes('400') || msg.includes('invalid'))
+    return 'Некорректные данные — проверь введённое значение'
+  return 'Что-то пошло не так — попробуй ещё раз'
+}
+
 async function req(path, options = {}) {
   const initData = getInitData()
   const isFormData = options.body instanceof FormData

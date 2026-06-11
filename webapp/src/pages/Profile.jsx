@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, friendlyError } from '../api'
 import { haptic, setThemeOverride, getThemeOverride } from '../tg'
 import { playSound, getRestSound, setRestSound, SOUND_OPTIONS } from '../sounds'
 
@@ -128,7 +128,7 @@ export default function Profile({ onBack }) {
       showToast('Сохранено ✓')
     } catch (e) {
       setData((prev) => ({ ...prev, [field]: typeof value === 'boolean' ? !value : prev[field] }))
-      showToast('Ошибка: ' + e.message, true)
+      showToast(friendlyError(e), true)
     }
   }
 

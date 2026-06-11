@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
+import { friendlyError } from '../api'
 import { api } from '../api'
 import { haptic } from '../tg'
 
@@ -145,7 +146,7 @@ function NutritionDock({ onLogged }) {
     try {
       await fn(); onLogged(); setText(''); setMode(null); haptic('medium')
     } catch (e) {
-      haptic('heavy'); alert('Ошибка: ' + e.message)
+      haptic('heavy'); alert(friendlyError(e))
     } finally { setSending(false) }
   }
 
@@ -310,7 +311,7 @@ export default function Nutrition() {
       await api.deleteFood(id)
       await api.nutritionToday().then(setData)
       showToast('Приём удалён')
-    } catch (e) { showToast('Ошибка: ' + e.message, true) }
+    } catch (e) { showToast(friendlyError(e), true) }
   }
 
   const handleUpdate = async (text) => {
@@ -319,7 +320,7 @@ export default function Nutrition() {
       await api.updateFood(id, text); setSheetEntry(null)
       await api.nutritionToday().then(setData)
       showToast('Обновлено ✓')
-    } catch (e) { showToast('Ошибка: ' + e.message, true); throw e }
+    } catch (e) { showToast(friendlyError(e), true); throw e }
   }
 
   if (loading) return <div className="spinner">Загружаем питание...</div>

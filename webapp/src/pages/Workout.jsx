@@ -183,7 +183,12 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
       </div>
 
       <div style={{ marginBottom: 12 }}>
-        <div className="set-input-label" style={{ marginBottom: 6 }}>RPE — усилие</div>
+        <div style={{ marginBottom: 6 }}>
+          <span className="set-input-label">RPE — усилие</span>
+          <span style={{ fontSize: 11, color: 'var(--hint)', marginLeft: 6 }}>
+            6.5 = легко · 8 = тяжело · 9.5 = предел
+          </span>
+        </div>
         <div className="rpe-pills">
           {RPE_PILLS.map((v) => (
             <button

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../api'
+import { api, friendlyError } from '../api'
 import { haptic } from '../tg'
 
 const DAYS_RU = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота']
@@ -62,19 +62,36 @@ export default function Dashboard({ onGoWorkout, onGoProfile }) {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState(null)
 
-  useEffect(() => {
+  const load = () => {
+    setLoading(true); setErr(null)
     api.dashboard()
       .then(setData)
-      .catch((e) => setErr(e.message))
+      .catch((e) => setErr(friendlyError(e)))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { load() }, [])
 
   if (loading) return <div className="spinner">Загружаем данные...</div>
-  if (err) return <div className="spinner" style={{ color: '#f87171' }}>{err}</div>
+  if (err) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 16, padding: 24 }}>
+      <div style={{ color: '#f87171', fontSize: 14, textAlign: 'center' }}>{err}</div>
+      <button className="btn-primary" style={{ maxWidth: 200 }} onClick={() => { haptic('light'); load() }}>
+        Попробовать снова
+      </button>
+    </div>
+  )
 
   const { user, next_workout, nutrition_today, nutrition_goals, week_stats } = data
   if (!user || !next_workout || !nutrition_today || !nutrition_goals) {
-    return <div className="spinner" style={{ color: '#f87171' }}>Ошибка загрузки данных</div>
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 16, padding: 24 }}>
+        <div style={{ color: '#f87171', fontSize: 14, textAlign: 'center' }}>Не удалось загрузить данные</div>
+        <button className="btn-primary" style={{ maxWidth: 200 }} onClick={() => { haptic('light'); load() }}>
+          Попробовать снова
+        </button>
+      </div>
+    )
   }
 
   const initial = (user.name || '?')[0].toUpperCase()
