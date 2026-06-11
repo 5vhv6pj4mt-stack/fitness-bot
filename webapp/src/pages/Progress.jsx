@@ -2,6 +2,7 @@ import { useEffect, useState, memo } from 'react'
 import { AreaChart, Area, BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { api } from '../api'
 import ProgressBar from '../components/ProgressBar'
+import ExerciseProgressChart from '../components/ExerciseProgressChart'
 
 const TAB_LABELS = ['Неделя', 'Тоннаж', 'Питание', 'Веса', 'Тело', 'Мышцы']
 
@@ -286,6 +287,7 @@ function TonnageTab({ data }) {
   const currentTonnage = tonnage_weeks[tonnage_weeks.length - 1]?.tonnage || 0
   const prevTonnage = tonnage_weeks[tonnage_weeks.length - 2]?.tonnage || 0
   const delta = currentTonnage - prevTonnage
+  const [chartEx, setChartEx] = useState(null)
 
   return (
     <>
@@ -343,11 +345,13 @@ function TonnageTab({ data }) {
         <div className="card">
           <div className="section-title">Лучшие веса</div>
           {exercise_prs.map((pr, i) => (
-            <div key={i} style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              padding: '10px 0',
-              borderBottom: i < exercise_prs.length - 1 ? '1px solid var(--sep)' : 'none',
-            }}>
+            <div key={i}
+              onClick={() => setChartEx(chartEx === pr.exercise ? null : pr.exercise)}
+              style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '10px 0', cursor: 'pointer',
+                borderBottom: i < exercise_prs.length - 1 ? '1px solid var(--sep)' : 'none',
+              }}>
               <div style={{ fontSize: 14 }}>{pr.exercise}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontWeight: 700, fontSize: 16 }}>{pr.weight} кг</span>
@@ -355,9 +359,18 @@ function TonnageTab({ data }) {
                   background: 'var(--accent)', color: 'var(--accent-text)',
                   fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 6,
                 }}>ПР</span>
+                <span style={{ color: 'var(--hint)', fontSize: 14 }}>
+                  {chartEx === pr.exercise ? '▲' : '▼'}
+                </span>
               </div>
             </div>
           ))}
+          {chartEx && (
+            <ExerciseProgressChart
+              exercise={chartEx}
+              onClose={() => setChartEx(null)}
+            />
+          )}
         </div>
       )}
     </>

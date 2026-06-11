@@ -58,16 +58,7 @@ app.add_middleware(
     allow_headers=["x-init-data", "content-type"],
 )
 
-DAY_TYPES = {
-    "upper_strength": "Верх — Сила",
-    "upper_volume": "Верх — Объём",
-    "legs": "Ноги",
-}
-WEEK_TYPES = {
-    "strength": "Силовая",
-    "volume": "Объёмная",
-    "deload": "Разгрузочная",
-}
+from constants import DAY_TYPES, WEEK_TYPES
 
 
 def today() -> str:
@@ -135,11 +126,26 @@ def _suggested_weight(last_weight: float, last_rpe: float | None) -> float:
     return round(round(raw / 2.5) * 2.5, 1)
 
 
+def _parse_rest_secs(rest: str | None) -> int:
+    if not rest or rest == '—':
+        return 0
+    s = 0
+    import re
+    m = re.search(r'(\d+)м', rest)
+    sec = re.search(r'(\d+)с', rest)
+    if m:
+        s += int(m.group(1)) * 60
+    if sec:
+        s += int(sec.group(1))
+    return s or 120
+
+
 async def enrich_exercises_with_history(user_id: int, exercises: list) -> list:
     result = []
     for ex in exercises:
         last = await get_last_exercise_set(user_id, ex["exercise"])
         ex_dict = dict(ex)
+        ex_dict["rest_secs"] = _parse_rest_secs(ex.get("rest"))
         if last:
             ex_dict["last_weight"] = last["actual_weight"]
             ex_dict["last_reps"] = last["reps"]
@@ -612,12 +618,21 @@ async def nutrition_today(x_init_data: str = Header(alias="x-init-data")):
     raw_entries = await get_day_food_entries(user_id, today())
     totals = await get_day_nutrition(user_id, today())
 
+    from datetime import datetime as _dt, timedelta as _td
+    utc_offset = user.get("utc_offset") or 0
+
+    def _local_time(created_at: str) -> str:
+        try:
+            return (_dt.fromisoformat(created_at) + _td(hours=utc_offset)).strftime("%H:%M")
+        except Exception:
+            return created_at[11:16]
+
     groups: dict[str, list] = {}
     for e in raw_entries:
         mt = e.get("meal_type") or "other"
         groups.setdefault(mt, []).append({
             "id": e["id"],
-            "time": e["created_at"][11:16],
+            "time": _local_time(e["created_at"]),
             "description": e["description"],
             "calories": round(e["calories"]),
             "protein": round(e["protein"], 1),
@@ -974,7 +989,7 @@ async def exercise_history_endpoint(
     x_init_data: str = Header(alias="x-init-data"),
 ):
     user_id = validate_init_data(x_init_data)
-    history = await get_exercise_weight_history(user_id, name, limit=8)
+    history = await get_exercise_weight_history(user_id, name, limit=24)
     return {"history": history}
 
 
