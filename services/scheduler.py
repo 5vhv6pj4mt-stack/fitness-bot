@@ -78,12 +78,12 @@ def remove_daily_reminders(user_id: int):
 
 async def _send_weekly_report():
     from database.db import (get_all_onboarded_users, get_user,
-                              get_week_workouts, get_week_nutrition_avg, get_week_exercise_weights)
+                              get_week_workouts, get_week_nutrition_avg, get_week_exercise_weights,
+                              get_weekly_new_prs, get_weekly_kbju_days_in_norm)
     if _bot is None:
         return
 
     today = date.today()
-    # Воскресенье — отчёт за прошедшие 7 дней (пн–вс)
     week_end = today.isoformat()
     week_start = (today - timedelta(days=6)).isoformat()
     prev_start = (today - timedelta(days=13)).isoformat()
@@ -96,8 +96,18 @@ async def _send_weekly_report():
             nutrition = await get_week_nutrition_avg(user_id, week_start, week_end)
             cur_weights = await get_week_exercise_weights(user_id, week_start, week_end)
             prev_weights = await get_week_exercise_weights(user_id, prev_start, prev_end)
+            new_prs = await get_weekly_new_prs(user_id, week_start, week_end)
+            kbju_days = await get_weekly_kbju_days_in_norm(user_id, week_start, week_end)
 
-            lines = [f"📋 <b>Недельный отчёт</b> — {week_start[5:].replace('-', '.')}–{week_end[5:].replace('-', '.')}\n"]
+            if len(workouts) == 0 and nutrition["days_tracked"] == 0:
+                await _bot.send_message(
+                    user_id,
+                    "📋 <b>Итоги недели</b>\n\nНи одной тренировки и записей питания — начни новую неделю с понедельника! 💪",
+                    parse_mode="HTML",
+                )
+                continue
+
+            lines = [f"📋 <b>Итоги недели</b> — {week_start[5:].replace('-', '.')}–{week_end[5:].replace('-', '.')}\n"]
 
             # Тренировки
             tonnage = sum(w["total_tonnage"] for w in workouts)
@@ -108,32 +118,38 @@ async def _send_weekly_report():
             lines.append(
                 f"💪 <b>Тренировок:</b> {len(workouts)}\n"
                 f"🏋️ Тоннаж: <b>{tonnage:,.0f} кг</b>"
-                + (f" ({sign}{diff_t:.0f} кг vs пред. неделя)" if prev_tonnage > 0 else "")
+                + (f" ({sign}{diff_t:.0f} кг vs пред. нед.)" if prev_tonnage > 0 else "")
             )
 
-            # Прогресс весов
+            # Личные рекорды
+            if new_prs:
+                pr_lines = "\n".join(f"  🏆 {p['exercise']}: {p['weight']:.0f} кг" for p in new_prs[:5])
+                lines.append(f"\n🎯 <b>Новые рекорды:</b>\n{pr_lines}")
+
+            # Прогресс весов (без новых ПР)
+            pr_exercises = {p["exercise"] for p in new_prs}
             gains = []
             for ex, w_new in cur_weights.items():
+                if ex in pr_exercises:
+                    continue
                 w_old = prev_weights.get(ex)
                 if w_old and w_new > w_old:
                     gains.append(f"  ↗ {ex}: {w_old:.0f} → {w_new:.0f} кг")
             if gains:
-                lines.append("\n📈 <b>Прогресс весов:</b>\n" + "\n".join(gains))
+                lines.append("\n📈 <b>Прогресс:</b>\n" + "\n".join(gains))
 
             # Питание
             if nutrition["days_tracked"] > 0:
                 cal_pct = int(nutrition["avg_calories"] / user["goal_calories"] * 100) if user["goal_calories"] else 0
                 prot_pct = int(nutrition["avg_protein"] / user["goal_protein"] * 100) if user["goal_protein"] else 0
+                norm_icon = "✅" if kbju_days >= 5 else "🟡" if kbju_days >= 3 else "🔴"
                 lines.append(
                     f"\n🍽 <b>Питание</b> (ср. за {nutrition['days_tracked']} дн.):\n"
                     f"🔥 {nutrition['avg_calories']:.0f} / {user['goal_calories']} ккал ({cal_pct}%)\n"
                     f"🥩 Белок: {nutrition['avg_protein']:.0f} / {user['goal_protein']}г ({prot_pct}%)\n"
-                    f"🌾 Углеводы: {nutrition['avg_carbs']:.0f} / {user['goal_carbs']}г\n"
-                    f"🫒 Жиры: {nutrition['avg_fat']:.0f} / {user['goal_fat']}г"
+                    f"🌾 Углев.: {nutrition['avg_carbs']:.0f} г  🫒 Жиры: {nutrition['avg_fat']:.0f} г\n"
+                    f"{norm_icon} Дней в норме (±20%): <b>{kbju_days}/7</b>"
                 )
-
-            if len(workouts) == 0 and nutrition["days_tracked"] == 0:
-                continue  # нечего отправлять
 
             await _bot.send_message(user_id, "\n".join(lines), parse_mode="HTML")
         except Exception as e:

@@ -1038,3 +1038,57 @@ async def get_week_exercise_weights(user_id: int, week_start: str, week_end: str
             (user_id, week_start, week_end)
         ) as cur:
             return {r[0]: r[1] for r in await cur.fetchall()}
+
+
+async def get_weekly_new_prs(user_id: int, week_start: str, week_end: str) -> list[dict]:
+    """Упражнения, где вес за неделю равен all-time рекорду (новый ПР)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT s.exercise, MAX(s.actual_weight) as week_max
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1
+                 AND w.date BETWEEN ? AND ? AND s.actual_weight > 0
+               GROUP BY s.exercise""",
+            (user_id, week_start, week_end)
+        ) as cur:
+            week_weights = {r[0]: r[1] for r in await cur.fetchall()}
+
+        if not week_weights:
+            return []
+
+        prs = []
+        for exercise, week_max in week_weights.items():
+            async with db.execute(
+                """SELECT MAX(s.actual_weight)
+                   FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+                   WHERE w.user_id=? AND w.is_finished=1 AND s.exercise=? AND s.actual_weight > 0""",
+                (user_id, exercise)
+            ) as cur:
+                row = await cur.fetchone()
+                all_time_max = row[0] if row else 0
+            if week_max >= (all_time_max or 0):
+                prs.append({"exercise": exercise, "weight": week_max})
+        return prs
+
+
+async def get_weekly_kbju_days_in_norm(user_id: int, week_start: str, week_end: str,
+                                        tolerance: float = 0.2) -> int:
+    """Количество дней, когда калории были в пределах ±tolerance от цели."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT goal_calories FROM users WHERE user_id=?", (user_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            goal = (row[0] or 0) if row else 0
+        if not goal:
+            return 0
+        async with db.execute(
+            """SELECT date, SUM(calories) as total_cal
+               FROM food_log
+               WHERE user_id=? AND date BETWEEN ? AND ?
+               GROUP BY date""",
+            (user_id, week_start, week_end)
+        ) as cur:
+            days = await cur.fetchall()
+        lo, hi = goal * (1 - tolerance), goal * (1 + tolerance)
+        return sum(1 for _, cal in days if lo <= (cal or 0) <= hi)
