@@ -131,6 +131,7 @@ function NutritionDock({ onLogged }) {
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [justLogged, setJustLogged] = useState(false)
   const [templates, setTemplates] = useState([])
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
@@ -144,7 +145,9 @@ function NutritionDock({ onLogged }) {
   const send = async (fn) => {
     setSending(true)
     try {
-      await fn(); onLogged(); setText(''); setMode(null); haptic('medium')
+      await fn(); onLogged(); setText(''); setMode(null)
+      setJustLogged(true); setTimeout(() => setJustLogged(false), 4000)
+      haptic('medium')
     } catch (e) {
       haptic('heavy'); alert(friendlyError(e))
     } finally { setSending(false) }
@@ -188,22 +191,51 @@ function NutritionDock({ onLogged }) {
 
   return (
     <div className="nutr-dock">
+      {/* Just logged banner */}
+      {justLogged && mode === null && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          padding: '8px 12px', margin: '4px 8px 0',
+          background: 'rgba(48,209,88,.1)', borderRadius: 12,
+        }}>
+          <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 600 }}>✅ Записано</span>
+          <button
+            onClick={() => { haptic('light'); setJustLogged(false); toggleMode('text') }}
+            style={{
+              marginLeft: 'auto', background: 'var(--green)', border: 'none',
+              borderRadius: 10, color: '#fff', fontSize: 12, fontWeight: 700,
+              padding: '5px 12px', cursor: 'pointer',
+            }}
+          >➕ Добавить ещё</button>
+        </div>
+      )}
+
       {/* Quick chips */}
-      {templates.length > 0 && mode === null && (
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '6px 12px 2px', scrollbarWidth: 'none' }}>
-          {templates.slice(0, 8).map((t) => (
-            <button key={t.description}
-              onClick={() => { setText(t.description); setMode('text'); setTimeout(() => textareaRef.current?.focus(), 100) }}
-              style={{
-                background: 'var(--bg2)', border: '1px solid var(--sep)', borderRadius: 12,
-                padding: '6px 10px', fontSize: 11, fontWeight: 600, color: 'var(--text)',
-                cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, lineHeight: 1.2,
-              }}
-            >
-              <div>{t.description}</div>
-              <div style={{ color: 'var(--hint)', fontSize: 10 }}>{t.calories} ккал</div>
-            </button>
-          ))}
+      {mode === null && (
+        <div style={{ padding: '6px 12px 2px' }}>
+          {templates.length > 0 ? (
+            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none' }}>
+              {templates.slice(0, 8).map((t) => (
+                <button key={t.description}
+                  disabled={sending}
+                  onClick={() => { haptic('medium'); send(() => api.logFood(t.description)) }}
+                  style={{
+                    background: 'var(--bg2)', border: '1px solid var(--sep)', borderRadius: 12,
+                    padding: '6px 10px', fontSize: 11, fontWeight: 600, color: 'var(--text)',
+                    cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, lineHeight: 1.2,
+                    opacity: sending ? 0.5 : 1,
+                  }}
+                >
+                  <div>{t.description}</div>
+                  <div style={{ color: 'var(--hint)', fontSize: 10 }}>{t.calories} ккал</div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: 'var(--hint)', padding: '2px 0 4px' }}>
+              Сохраняй частые блюда как шаблоны через меню ⋮
+            </div>
+          )}
         </div>
       )}
 
@@ -238,16 +270,14 @@ function NutritionDock({ onLogged }) {
         <div style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(10,132,255,.05)' }}>
           {recording ? (
             <>
-              <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-                {[0,1,2,3,4,5,6,7,8].map((i) => (
+              <div style={{ flex: 1, display: 'flex', gap: 3, alignItems: 'center', justifyContent: 'center', height: 36 }}>
+                {[0,1,2,3,4,5,6,7,8,9,10,11,12].map((i) => (
                   <div key={i} style={{
-                    width: 3.5, background: 'var(--blue)', borderRadius: 2,
-                    animation: `voiceWave 1.1s ease-in-out ${i * 0.12}s infinite alternate`,
-                    height: 16,
+                    width: 3, height: 28, background: 'var(--blue)', borderRadius: 2,
+                    animation: `voiceWave 0.85s ease-in-out ${i * 0.07}s infinite alternate`,
                   }} />
                 ))}
               </div>
-              <span style={{ flex: 1, fontSize: 13, color: 'var(--hint)' }}>Слушаю...</span>
               <button onClick={stopVoice} style={{
                 background: 'rgba(255,69,58,.15)', border: 'none', borderRadius: 10,
                 color: 'var(--red)', fontSize: 12, fontWeight: 700, padding: '7px 14px', cursor: 'pointer',
