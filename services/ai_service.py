@@ -356,16 +356,47 @@ async def get_exercise_technique_brief(exercise: str) -> str:
     )
 
 
+# Надёжная карта русских названий → английский поисковый запрос для exercisedb.dev
+_EXERCISE_NAME_MAP: dict[str, str] = {
+    "жим штанги наклонной": "incline barbell bench press",
+    "жим гантелей лёжа": "dumbbell bench press",
+    "тяга штанги в наклоне": "barbell bent over row",
+    "армейский жим": "barbell overhead press",
+    "армейский жим сидя": "barbell seated overhead press",
+    "подтягивания широкие": "wide grip pull-up",
+    "подтягивания широкие с весом": "weighted wide grip pull-up",
+    "подтягивания обратным хватом": "chin-up",
+    "подтягивания обратным хватом с весом": "weighted chin-up",
+    "тяга лица": "face pull",
+    "жим ногами": "leg press",
+    "болгарские выпады": "bulgarian split squat",
+    "румынская тяга": "romanian deadlift",
+    "сгибания ног": "lying leg curl",
+    "подъём на носки": "standing calf raise",
+    "пресс": "crunch",
+    "тяга горизонтального блока": "seated cable row",
+    "бицепс (штанга) суперсет": "barbell curl",
+    "бицепс штанга": "barbell curl",
+    "трицепс суперсет": "triceps pushdown",
+    "обратная бабочка": "reverse fly",
+    "вис на перекладине": "dead hang",
+}
+
+
 async def get_exercise_gif(exercise_name: str) -> str | None:
     from config import RAPIDAPI_KEY
-    try:
-        english_name = (await _ask(
-            "",
-            f"Translate this gym exercise name to English. Reply with ONLY the English name, nothing else: {exercise_name}",
-            max_tokens=20, temperature=0,
-        )).strip()
-    except Exception:
-        english_name = exercise_name
+
+    # Сначала ищем в хардкодной карте — надёжнее AI-перевода
+    english_name = _EXERCISE_NAME_MAP.get(exercise_name.lower().strip())
+    if not english_name:
+        try:
+            english_name = (await _ask(
+                "",
+                f"Translate this gym exercise name to English. Reply with ONLY the English name, nothing else: {exercise_name}",
+                max_tokens=20, temperature=0,
+            )).strip()
+        except Exception:
+            english_name = exercise_name
 
     # Primary: exercisedb.dev (free, no key, same GIF format)
     result = await _get_gif_exercisedb_free(english_name)

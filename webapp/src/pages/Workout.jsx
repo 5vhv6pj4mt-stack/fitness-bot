@@ -51,11 +51,11 @@ function ExerciseInfoPanel({ exercise }) {
   return (
     <div style={{ background: 'var(--bg)', borderRadius: 10, overflow: 'hidden', marginBottom: 12 }}>
       {info.image_url && (
-        <div style={{ background: '#111', display: 'flex', justifyContent: 'center' }}>
+        <div style={{ background: '#111', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>
           <img
             src={info.image_url}
             alt={exercise}
-            style={{ width: '100%', maxHeight: 220, objectFit: 'contain', display: 'block' }}
+            style={{ maxWidth: '100%', maxHeight: 320, display: 'block' }}
           />
         </div>
       )}
