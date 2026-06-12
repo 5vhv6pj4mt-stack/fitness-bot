@@ -37,6 +37,27 @@ def _guess_meal_type(utc_offset: int = 0) -> str:
     return "other"
 
 
+_MEAL_KEYWORDS = {
+    "breakfast": ["завтрак", "завтракал", "завтракала", "позавтракал", "позавтракала", "на завтрак", "утром"],
+    "lunch":     ["обед", "обедал", "обедала", "пообедал", "пообедала", "на обед"],
+    "dinner":    ["ужин", "ужинал", "ужинала", "поужинал", "поужинала", "на ужин"],
+    "snack":     ["перекус", "перекусил", "перекусила", "полдник", "перекусывал", "полдничал"],
+}
+
+def _extract_meal_type(text: str) -> str | None:
+    """Извлекает тип приёма пищи из текста пользователя. None если не найдено."""
+    t = text.lower()
+    for meal_type, keywords in _MEAL_KEYWORDS.items():
+        if any(k in t for k in keywords):
+            return meal_type
+    return None
+
+
+def _detect_meal_type(text: str, utc_offset: int = 0) -> str:
+    """Тип приёма пищи: из текста (приоритет) или по текущему времени."""
+    return _extract_meal_type(text) or _guess_meal_type(utc_offset)
+
+
 def utc_to_local_hhmm(ts: str, utc_offset: int) -> str:
     """SQLite UTC timestamp → HH:MM в часовом поясе пользователя."""
     dt = datetime.fromisoformat(ts).replace(tzinfo=timezone.utc)
@@ -194,7 +215,7 @@ async def _process_food(message: Message, state: FSMContext, food_text: str,
         entry_id = await log_food(
             message.from_user.id, user_today(utc_offset),
             desc, result["calories"], result["protein"], result["carbs"], result["fat"],
-            meal_type=_guess_meal_type(utc_offset)
+            meal_type=_detect_meal_type(food_text, utc_offset)
         )
 
         totals = await get_day_nutrition(message.from_user.id, user_today(utc_offset))
