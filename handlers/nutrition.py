@@ -7,9 +7,9 @@ from database.db import (get_user, log_food, get_day_nutrition, get_day_food_ent
                           save_food_template, get_food_templates, get_food_template, delete_food_template,
                           delete_food_entry, get_food_entry)
 from keyboards.keyboards import nutrition_menu, main_menu
-from services.ai_service import parse_food, parse_food_photo, get_nutrition_advice, transcribe_voice
+from services.ai_service import parse_food, parse_food_photo, get_nutrition_advice, transcribe_voice, nutrition_chat
 from handlers.nav import send_nav, track_msg, meal_icon
-from states.states import FoodLogging, FoodTemplate
+from states.states import FoodLogging, FoodTemplate, NutritionChat
 
 router = Router()
 
@@ -20,6 +20,21 @@ def _tz(utc_offset: int) -> timezone:
 
 def user_today(utc_offset: int = 0) -> str:
     return datetime.now(_tz(utc_offset)).date().isoformat()
+
+
+def _guess_meal_type(utc_offset: int = 0) -> str:
+    hour = datetime.now(_tz(utc_offset)).hour
+    if 6 <= hour < 11:
+        return "breakfast"
+    if 11 <= hour < 12:
+        return "snack"
+    if 12 <= hour < 15:
+        return "lunch"
+    if 15 <= hour < 18:
+        return "snack"
+    if 18 <= hour < 23:
+        return "dinner"
+    return "other"
 
 
 def utc_to_local_hhmm(ts: str, utc_offset: int) -> str:
@@ -178,7 +193,8 @@ async def _process_food(message: Message, state: FSMContext, food_text: str,
         desc = result.get("description", food_text[:300])
         entry_id = await log_food(
             message.from_user.id, user_today(utc_offset),
-            desc, result["calories"], result["protein"], result["carbs"], result["fat"]
+            desc, result["calories"], result["protein"], result["carbs"], result["fat"],
+            meal_type=_guess_meal_type(utc_offset)
         )
 
         totals = await get_day_nutrition(message.from_user.id, user_today(utc_offset))
@@ -217,7 +233,7 @@ async def _process_food(message: Message, state: FSMContext, food_text: str,
 _NAV_BUTTONS = {
     "🏠 Главное меню", "💪 Тренировка", "🍽 Питание", "📊 Статистика", "⚙️ Настройки",
     "➕ Записать приём пищи", "➕ Записать еду", "💡 Совет по питанию",
-    "🍴 Что съел сегодня", "📌 Шаблоны",
+    "🍴 Что съел сегодня", "📌 Шаблоны", "🤖 Спросить ИИ",
 }
 
 
@@ -379,7 +395,8 @@ async def cb_tmpl_log(callback: CallbackQuery):
     user = await get_user(callback.from_user.id)
     utc_offset = user.get("utc_offset", 0)
     await log_food(callback.from_user.id, user_today(utc_offset),
-                   t["description"] or t["name"], t["calories"], t["protein"], t["carbs"], t["fat"])
+                   t["description"] or t["name"], t["calories"], t["protein"], t["carbs"], t["fat"],
+                   meal_type=_guess_meal_type(utc_offset))
     totals = await get_day_nutrition(callback.from_user.id, user_today(utc_offset))
     remaining = user["goal_calories"] - totals["calories"]
     await callback.message.edit_text(
@@ -465,3 +482,125 @@ async def cb_food_delete(callback: CallbackQuery):
         await callback.message.delete()
     except Exception:
         pass
+
+
+# ── AI-ассистент по питанию ────────────────────────────────────────────────────
+
+def _chat_exit_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Завершить чат", callback_data="nutchat_exit"),
+    ]])
+
+
+def _chat_response_kb(ai_text: str) -> InlineKeyboardMarkup:
+    rows = []
+    # Показываем кнопку «Залогировать» только если ответ похож на описание еды
+    food_keywords = ("г ", "кг", "ккал", "белка", "белок", "порц", "гречк", "курин", "творог",
+                     "яйц", "рис", "овсян", "хлеб", "сыр", "йогурт", "молоко")
+    if any(k in ai_text.lower() for k in food_keywords):
+        rows.append([InlineKeyboardButton(text="➕ Записать предложенное", callback_data="nutchat_log")])
+    rows.append([InlineKeyboardButton(text="❌ Завершить чат", callback_data="nutchat_exit")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.message(F.text == "🤖 Спросить ИИ")
+async def nutrition_ai_start(message: Message, state: FSMContext):
+    user = await get_user(message.from_user.id)
+    today = user_today(user.get("utc_offset", 0))
+    totals = await get_day_nutrition(message.from_user.id, today)
+    goals = {"calories": user["goal_calories"], "protein": user["goal_protein"],
+             "carbs": user["goal_carbs"], "fat": user["goal_fat"]}
+    remaining_kcal = max(0, goals["calories"] - totals["calories"])
+    remaining_prot = max(0, goals["protein"] - totals["protein"])
+
+    context = (
+        f"Профиль: вес {user.get('weight', '?')}кг, цель — {user.get('goal', 'масса')}.\n"
+        f"Цели: {goals['calories']} ккал | Б:{goals['protein']}г | У:{goals['carbs']}г | Ж:{goals['fat']}г\n"
+        f"Съедено сегодня: {totals['calories']:.0f} ккал | Б:{totals['protein']:.0f}г | "
+        f"У:{totals['carbs']:.0f}г | Ж:{totals['fat']:.0f}г\n"
+        f"Осталось: {remaining_kcal:.0f} ккал | белка {remaining_prot:.0f}г"
+    )
+    await state.set_state(NutritionChat.chatting)
+    await state.update_data(history=[], context=context, last_ai_text="")
+    await send_nav(
+        message,
+        f"🤖 <b>AI-ассистент по питанию</b>\n\n"
+        f"Задай любой вопрос про питание.\n\n"
+        f"<i>Примеры:</i>\n"
+        f"• <i>Чем добрать {remaining_kcal:.0f} ккал перед сном?</i>\n"
+        f"• <i>Что приготовить из курицы и гречки?</i>\n"
+        f"• <i>Сколько белка в твороге 5%?</i>\n\n"
+        f"Можно писать текстом или голосом 🎤",
+        reply_markup=nutrition_menu(),
+    )
+    await message.answer("Слушаю 👂", reply_markup=_chat_exit_kb())
+
+
+@router.callback_query(F.data == "nutchat_exit")
+async def cb_nutchat_exit(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("Чат завершён.", reply_markup=None)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "nutchat_log")
+async def cb_nutchat_log(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    last_ai = data.get("last_ai_text", "")
+    await state.set_state(FoodLogging.waiting_input)
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer()
+    msg = await callback.message.answer("⏳ Считаю КБЖУ предложенной еды...")
+    await _process_food(callback.message, state, last_ai, status_msg=msg)
+
+
+async def _handle_nutchat_message(message: Message, state: FSMContext, text: str):
+    data = await state.get_data()
+    history: list = data.get("history", [])
+    context: str = data.get("context", "")
+    msg = await message.answer("⏳ Думаю...")
+    try:
+        reply = await nutrition_chat(text, context, history)
+        # Сохраняем историю (ограничиваем 10 обменами)
+        history.append({"role": "user", "content": text})
+        history.append({"role": "assistant", "content": reply})
+        if len(history) > 20:
+            history = history[-20:]
+        await state.update_data(history=history, last_ai_text=reply)
+        await msg.edit_text(f"🤖 {reply}", reply_markup=_chat_response_kb(reply), parse_mode="HTML")
+    except Exception as e:
+        await msg.edit_text(f"❌ Ошибка: {e}")
+
+
+@router.message(NutritionChat.chatting, F.text, ~F.text.in_(_NAV_BUTTONS), ~F.text.startswith("/"))
+async def handle_nutchat_text(message: Message, state: FSMContext):
+    await _handle_nutchat_message(message, state, message.text)
+
+
+@router.message(NutritionChat.chatting, F.voice)
+async def handle_nutchat_voice(message: Message, state: FSMContext):
+    msg = await message.answer("🎤 Распознаю голос...")
+    try:
+        file = await message.bot.get_file(message.voice.file_id)
+        audio_bytes = await message.bot.download_file(file.file_path)
+        text = await transcribe_voice(audio_bytes.read(), "voice.ogg")
+        await msg.edit_text(f"🎤 <i>{text}</i>\n\n⏳ Думаю...", parse_mode="HTML")
+        data = await state.get_data()
+        history = data.get("history", [])
+        context = data.get("context", "")
+        reply = await nutrition_chat(text, context, history)
+        history.append({"role": "user", "content": text})
+        history.append({"role": "assistant", "content": reply})
+        if len(history) > 20:
+            history = history[-20:]
+        await state.update_data(history=history, last_ai_text=reply)
+        await msg.edit_text(f"🎤 <i>{text}</i>\n\n🤖 {reply}",
+                            reply_markup=_chat_response_kb(reply), parse_mode="HTML")
+    except Exception as e:
+        await msg.edit_text(f"❌ Не удалось распознать голос: {e}")
+
+
+@router.message(NutritionChat.chatting, F.text.in_(_NAV_BUTTONS))
+async def handle_nutchat_nav(message: Message, state: FSMContext):
+    """Навигационная кнопка прерывает чат."""
+    await state.clear()
