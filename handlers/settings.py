@@ -7,9 +7,64 @@ from database.db import get_user, update_user, get_meal_reminders, set_meal_remi
 from keyboards.keyboards import main_menu
 from states.states import Setup, ReminderSettings
 from handlers.nav import send_nav, track_msg
-from services.scheduler import setup_daily_reminders
+from services.scheduler import setup_daily_reminders, setup_morning_brief, remove_morning_brief
 
 router = Router()
+
+
+_PROGRESS_NOTIFS = [
+    ("notify_pr",             "🏆 Личные рекорды"),
+    ("notify_streak",         "🔥 Стрики тренировок"),
+    ("notify_plateau",        "⚠️ Детекция плато"),
+    ("notify_overtraining",   "🚨 Перетренированность"),
+    ("notify_weekly_report",  "📋 Еженедельный отчёт"),
+]
+
+_BRIEF_SECTIONS = [
+    ("brief_workout",   "💪 План тренировки",        1),
+    ("brief_yesterday", "📊 Итоги вчера",            1),
+    ("brief_nutrient",  "🥩 Нутриент-акцент",        1),
+    ("brief_recovery",  "😴 Статус восстановления",  1),
+    ("brief_week_prog", "📈 Прогресс недели",         1),
+    ("brief_water",     "💧 Норма воды",             1),
+    ("brief_tip",       "💡 Совет дня",              1),
+    ("brief_food_idea", "🍳 Идея завтрака (AI)",      0),
+]
+
+
+def _progress_notif_kb(user: dict) -> InlineKeyboardMarkup:
+    rows = []
+    for key, label in _PROGRESS_NOTIFS:
+        enabled = user.get(key, 1)
+        icon = "✅" if enabled else "❌"
+        rows.append([InlineKeyboardButton(text=f"{icon} {label}", callback_data=f"pnotif_toggle:{key}")])
+    # Кнопка для утреннего брифа — ведёт в подменю
+    brief_on = user.get("notify_morning_brief", 1)
+    brief_icon = "✅" if brief_on else "❌"
+    rows.append([InlineKeyboardButton(
+        text=f"{brief_icon} 🌅 Утренний бриф (8:00) →",
+        callback_data="brief_settings"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _brief_settings_kb(user: dict) -> InlineKeyboardMarkup:
+    rows = []
+    # Мастер-тогл
+    master = user.get("notify_morning_brief", 1)
+    master_icon = "✅" if master else "❌"
+    rows.append([InlineKeyboardButton(
+        text=f"{master_icon} Бриф включён",
+        callback_data="pnotif_toggle:notify_morning_brief"
+    )])
+    rows.append([InlineKeyboardButton(text="─────────────────", callback_data="noop")])
+    # Секции
+    for key, label, default in _BRIEF_SECTIONS:
+        enabled = user.get(key, default)
+        icon = "✅" if enabled else "❌"
+        rows.append([InlineKeyboardButton(text=f"{icon} {label}", callback_data=f"brief_toggle:{key}")])
+    rows.append([InlineKeyboardButton(text="← Назад", callback_data="back_to_notifs")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _reminders_kb(reminders: list[dict]) -> InlineKeyboardMarkup:
@@ -68,6 +123,87 @@ async def settings_menu(message: Message):
         parse_mode="HTML",
     )
     track_msg(message.from_user.id, sent.message_id)
+
+    sent2 = await message.answer(
+        "📊 <b>Уведомления о прогрессе</b>",
+        reply_markup=_progress_notif_kb(user),
+        parse_mode="HTML",
+    )
+    track_msg(message.from_user.id, sent2.message_id)
+
+
+@router.callback_query(F.data == "noop")
+async def cb_noop(callback: CallbackQuery):
+    await callback.answer()
+
+
+@router.callback_query(F.data == "brief_settings")
+async def cb_brief_settings(callback: CallbackQuery):
+    user = await get_user(callback.from_user.id)
+    await callback.message.edit_text(
+        "🌅 <b>Настройки утреннего брифа</b>\n\n"
+        "Включай или выключай разделы брифа.\n"
+        "Отправляется в 8:00 каждый день.",
+        reply_markup=_brief_settings_kb(user),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_notifs")
+async def cb_back_to_notifs(callback: CallbackQuery):
+    user = await get_user(callback.from_user.id)
+    await callback.message.edit_text(
+        "📊 <b>Уведомления о прогрессе</b>",
+        reply_markup=_progress_notif_kb(user),
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("brief_toggle:"))
+async def cb_brief_toggle(callback: CallbackQuery):
+    key = callback.data.split(":", 1)[1]
+    valid_keys = {k for k, _, _ in _BRIEF_SECTIONS}
+    if key not in valid_keys:
+        await callback.answer()
+        return
+    user = await get_user(callback.from_user.id)
+    default = next((d for k, _, d in _BRIEF_SECTIONS if k == key), 1)
+    new_val = 0 if user.get(key, default) else 1
+    await update_user(callback.from_user.id, **{key: new_val})
+    user[key] = new_val
+    await callback.message.edit_reply_markup(reply_markup=_brief_settings_kb(user))
+    await callback.answer("Включено ✅" if new_val else "Выключено ❌")
+
+
+@router.callback_query(F.data.startswith("pnotif_toggle:"))
+async def cb_pnotif_toggle(callback: CallbackQuery):
+    key = callback.data.split(":", 1)[1]
+    valid_keys = {k for k, _ in _PROGRESS_NOTIFS} | {"notify_morning_brief"}
+    if key not in valid_keys:
+        await callback.answer()
+        return
+    user = await get_user(callback.from_user.id)
+    new_val = 0 if user.get(key, 1) else 1
+    await update_user(callback.from_user.id, **{key: new_val})
+    user[key] = new_val
+    if key == "notify_morning_brief":
+        if new_val:
+            setup_morning_brief(callback.from_user.id,
+                                user.get("morning_brief_hour", 8),
+                                user.get("morning_brief_minute", 0))
+        else:
+            remove_morning_brief(callback.from_user.id)
+        # обновляем подменю брифа (если вызвано оттуда)
+        try:
+            await callback.message.edit_reply_markup(reply_markup=_brief_settings_kb(user))
+        except Exception:
+            pass
+        await callback.answer("Включено ✅" if new_val else "Выключено ❌")
+        return
+    await callback.message.edit_reply_markup(reply_markup=_progress_notif_kb(user))
+    await callback.answer("Включено ✅" if new_val else "Выключено ❌")
 
 
 @router.callback_query(F.data == "rem_list")
@@ -284,3 +420,11 @@ async def update_timezone(message: Message):
         await message.answer(f"✅ Часовой пояс обновлён: {tz_str}", parse_mode="HTML")
     except (ValueError, IndexError):
         await message.answer("Формат: <code>tz +7</code> или <code>tz -5</code>", parse_mode="HTML")
+
+
+@router.message(Command("brief"))
+async def cmd_brief(message: Message):
+    """Тестовая команда — отправляет утренний бриф прямо сейчас."""
+    from services.scheduler import _send_morning_brief
+    await message.answer("⏳ Генерирую бриф...")
+    await _send_morning_brief(message.from_user.id)

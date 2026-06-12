@@ -108,6 +108,7 @@ async def init_db():
             ("brief_week_prog", "INTEGER DEFAULT 1"),
             ("brief_tip",       "INTEGER DEFAULT 1"),
             ("brief_water",     "INTEGER DEFAULT 1"),
+            ("notify_overtraining", "INTEGER DEFAULT 1"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -680,22 +681,30 @@ async def get_all_time_stats(user_id: int) -> dict:
 
 async def get_workout_streak(user_id: int) -> dict:
     """Считает текущий стрик тренировок.
-    Стрик = последовательные тренировки без перерыва > 12 дней.
+    Стрик = последовательные тренировки без перерыва > max_gap дней,
+    где max_gap зависит от days_per_week пользователя (ceil(7/dpw)+1).
     Возвращает: {current, longest, last_date}
     """
-    from datetime import datetime, timedelta
+    import math
+    from datetime import datetime
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT date FROM workouts WHERE user_id=? AND is_finished=1 ORDER BY date DESC",
             (user_id,)
         ) as cur:
             rows = await cur.fetchall()
+        async with db.execute(
+            "SELECT days_per_week FROM users WHERE user_id=?", (user_id,)
+        ) as cur:
+            urow = await cur.fetchone()
 
     if not rows:
         return {"current": 0, "longest": 0, "last_date": None}
 
+    days_per_week = (urow[0] if urow and urow[0] else 3)
+    MAX_GAP = max(2, math.ceil(7 / days_per_week) + 1)
+
     dates = sorted({r[0] for r in rows}, reverse=True)
-    MAX_GAP = 12  # дней
 
     # Текущий стрик
     current = 1
@@ -707,7 +716,7 @@ async def get_workout_streak(user_id: int) -> dict:
         else:
             break
 
-    # Проверяем не устарел ли стрик (последняя тренировка > 12 дней назад)
+    # Проверяем не устарел ли стрик
     last = datetime.strptime(dates[0], "%Y-%m-%d")
     days_since = (datetime.utcnow() - last).days
     if days_since > MAX_GAP:
@@ -1358,3 +1367,38 @@ async def get_exercise_progression_hint(user_id: int, exercise: str) -> dict:
     if rpe <= 9.5:
         return {"weight": w, "action": "hold", "reason": f"RPE {rpe:.1f} — тяжело, закрепляем вес"}
     return {"weight": max(w - 2.5, 2.5), "action": "decrease", "reason": f"RPE {rpe:.1f} — слишком тяжело, снижаем"}
+
+
+async def get_overtraining_risk(user_id: int) -> dict:
+    """Анализирует последние 5 тренировок на признаки перетренированности.
+    Критерии: 3+ тренировки подряд с avg_rpe >= 9.0.
+    Возвращает: {risk: 'none'|'medium'|'high', avg_rpe: float, n_hard: int}
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT avg_rpe, total_tonnage FROM workouts
+               WHERE user_id=? AND is_finished=1 AND avg_rpe > 0
+               ORDER BY date DESC LIMIT 5""",
+            (user_id,)
+        ) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+
+    if len(rows) < 3:
+        return {"risk": "none", "avg_rpe": 0.0, "n_hard": 0}
+
+    # Считаем подряд тяжёлые тренировки с конца (самые последние)
+    n_hard = 0
+    for r in rows:
+        if r["avg_rpe"] >= 9.0:
+            n_hard += 1
+        else:
+            break
+
+    avg_rpe = sum(r["avg_rpe"] for r in rows[:3]) / 3
+
+    if n_hard >= 3:
+        return {"risk": "high", "avg_rpe": round(avg_rpe, 1), "n_hard": n_hard}
+    if n_hard >= 2 and avg_rpe >= 8.8:
+        return {"risk": "medium", "avg_rpe": round(avg_rpe, 1), "n_hard": n_hard}
+    return {"risk": "none", "avg_rpe": round(avg_rpe, 1), "n_hard": n_hard}

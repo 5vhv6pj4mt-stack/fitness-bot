@@ -9,11 +9,13 @@ from database.db import (get_user, update_user, create_workout, save_set,
                           finish_workout, get_last_workout_by_day, get_workout_sets,
                           get_user_program, get_user_day_types, get_user_week_types,
                           update_workout_progress, get_active_workout, discard_all_active_workouts,
-                          update_exercise_weight, delete_workout_set)
+                          update_exercise_weight, delete_workout_set,
+                          check_exercise_pr, get_exercise_progression_hint,
+                          get_workout_streak, get_last_exercise_set, get_overtraining_risk)
 from keyboards.keyboards import (main_menu, workout_menu, workout_logging_keyboard,
                                   finish_keyboard, rest_timer_keyboard, rest_input_keyboard,
                                   set_input_keyboard, next_set_keyboard)
-from services.ai_service import analyze_workout, get_exercise_technique, get_exercise_gif
+from services.ai_service import analyze_workout, get_exercise_technique, get_exercise_gif, parse_voice_set, transcribe_voice
 from states.states import WorkoutLogging
 from handlers.nav import send_nav, track_msg
 
@@ -34,6 +36,11 @@ async def _try_delete(bot: Bot, chat_id: int, message_id: int):
         await bot.delete_message(chat_id, message_id)
     except Exception:
         pass
+
+
+async def _auto_delete(bot: Bot, chat_id: int, message_id: int, delay: int = 5):
+    await asyncio.sleep(delay)
+    await _try_delete(bot, chat_id, message_id)
 
 
 async def _rest_timer_task(bot: Bot, chat_id: int, seconds: int):
@@ -103,16 +110,7 @@ async def _rest_timer_task(bot: Bot, chat_id: int, seconds: int):
     finally:
         _rest_timers.pop(chat_id, None)
 
-DAY_TYPES = {
-    "upper_strength": "Верх — Сила",
-    "upper_volume": "Верх — Объём",
-    "legs": "Ноги",
-}
-WEEK_TYPES = {
-    "strength": "Силовая",
-    "volume": "Объёмная",
-    "deload": "Разгрузочная",
-}
+from constants import DAY_TYPES, WEEK_TYPES
 
 
 def today() -> str:
@@ -206,6 +204,10 @@ def _build_set_prompt(data: dict) -> tuple[str, "InlineKeyboardMarkup"]:
         + table
         + f"\n\n<b>Подход {set_index + 1}/{ex['sets']}</b>"
     )
+    if set_index == 0 and data.get("ex_context"):
+        ctx = data["ex_context"]
+        rpe_str = f" RPE{ctx['rpe']:.0f}" if ctx.get("rpe") else ""
+        text += f"\n💬 <i>Прошлый раз: {_fmt_weight(ctx['actual_weight'])}кг × {ctx['reps']} повт.{rpe_str}</i>"
     show_warmup = set_index == 0 and ex["weight"] > 0
     is_last_set = set_index == ex["sets"] - 1
     cur_rest = 0 if is_last_set else data.get("current_rest", 0)
@@ -378,6 +380,7 @@ async def start_workout(message: Message, state: FSMContext):
     cur_w, cur_r, cur_rpe = _init_set_defaults(ex)
 
     cur_rest = _parse_rest_seconds(ex["rest"]) if ex["sets"] > 1 else 0
+    ex_context = await get_last_exercise_set(message.from_user.id, ex["exercise"])
     await state.set_state(WorkoutLogging.logging_sets)
     await state.update_data(
         workout_id=workout_id,
@@ -391,14 +394,23 @@ async def start_workout(message: Message, state: FSMContext):
         current_reps=cur_r,
         current_rpe=cur_rpe,
         current_rest=cur_rest,
+        notify_pr=user.get("notify_pr", 1),
+        notify_streak=user.get("notify_streak", 1),
+        notify_overtraining=user.get("notify_overtraining", 1),
+        ex_context=ex_context,
     )
 
     table = format_exercise_table(ex, [], 0)
+    ctx_line = ""
+    if ex_context:
+        rpe_str = f" RPE{ex_context['rpe']:.0f}" if ex_context.get("rpe") else ""
+        ctx_line = f"\n💬 <i>Прошлый раз: {_fmt_weight(ex_context['actual_weight'])}кг × {ex_context['reps']} повт.{rpe_str}</i>"
     text = (
         f"🏋️ <b>{day_label} · {week_label} начата!</b>\n\n"
         f"<b>1. {ex['exercise']}</b>  ·  RPE {ex['rpe_range']}  ·  отдых {ex['rest']}\n\n"
         + table
         + f"\n\n<b>Подход 1/{ex['sets']}</b>"
+        + ctx_line
     )
     sent = await message.answer(
         text, parse_mode="HTML",
@@ -443,6 +455,16 @@ async def _advance_after_set(
     set_id = await save_set(workout_id, ex["exercise"], set_index + 1, ex["weight"], weight, reps, rpe, notes)
     all_sets.append({"exercise": ex["exercise"], "actual_weight": weight, "reps": reps, "rpe": rpe})
 
+    if data.get("notify_pr", 1):
+        pr_type = await check_exercise_pr(message.chat.id, ex["exercise"], weight, reps, workout_id)
+        if pr_type == "weight":
+            pr_msg = await message.answer(f"🏆 <b>Личный рекорд!</b> {_fmt_weight(weight)}кг — новый максимум в <b>{ex['exercise']}</b>!", parse_mode="HTML")
+            asyncio.create_task(_auto_delete(message.bot, message.chat.id, pr_msg.message_id, delay=8))
+        elif pr_type == "1rm":
+            est_1rm = weight * (1 + reps / 30.0)
+            pr_msg = await message.answer(f"🏆 <b>Рекорд по расчётному 1ПМ!</b> {_fmt_weight(weight)}кг × {reps} = ~{est_1rm:.0f}кг ({ex['exercise']})", parse_mode="HTML")
+            asyncio.create_task(_auto_delete(message.bot, message.chat.id, pr_msg.message_id, delay=8))
+
     next_set = set_index + 1
     next_ex = ex_index
     if next_set >= ex["sets"]:
@@ -478,8 +500,10 @@ async def _advance_after_set(
         rest_secs = data.get("current_rest") or _parse_rest_seconds(ex["rest"])
         # Для следующего упражнения сбрасываем current_rest по его плану
         next_rest = _parse_rest_seconds(next_ex_obj["rest"])
+        next_ex_context = await get_last_exercise_set(message.chat.id, next_ex_obj["exercise"])
         await state.update_data(current_weight=nw, current_reps=nr, current_rpe=nrpe,
-                                 current_rest=next_rest, rest_info_msg_id=None)
+                                 current_rest=next_rest, rest_info_msg_id=None,
+                                 ex_context=next_ex_context)
         text = f"✅ <b>{ex['exercise']}</b> — готово!{note_str}"
         sent = await message.answer(text, parse_mode="HTML", reply_markup=undo_kb)
         task = asyncio.create_task(
@@ -492,7 +516,8 @@ async def _advance_after_set(
         nrpe = _parse_rpe_default(next_ex_obj["rpe_range"])
         rest_secs = data.get("current_rest") or _parse_rest_seconds(ex["rest"])
         await state.update_data(current_weight=nw, current_reps=nr, current_rpe=nrpe,
-                                 current_rest=rest_secs, rest_info_msg_id=None)
+                                 current_rest=rest_secs, rest_info_msg_id=None,
+                                 ex_context=None)
         table = format_exercise_table(ex, all_sets, next_set)
         text = (
             f"✅ {_fmt_weight(weight)}кг × {reps} повт. RPE {rpe}{note_str}\n\n"
@@ -547,6 +572,63 @@ def parse_weight_command(text: str) -> tuple[str, float] | None:
     if m:
         return ("abs", float(m.group(1)))
     return None
+
+
+@router.message(WorkoutLogging.logging_sets, F.voice)
+async def log_set_voice(message: Message, state: FSMContext):
+    """Голосовой ввод подхода: 'сделал жим 80 на 5 раз'."""
+    msg = await message.answer("🎤 Распознаю...")
+    try:
+        file = await message.bot.get_file(message.voice.file_id)
+        audio_bytes = await message.bot.download_file(file.file_path)
+        transcript = await transcribe_voice(audio_bytes.read(), "voice.ogg")
+        await msg.edit_text(f"🎤 <i>{transcript}</i>\n\n⏳ Разбираю...", parse_mode="HTML")
+
+        data = await state.get_data()
+        exercises = data.get("exercises", [])
+        exercise_names = [ex["exercise"] for ex in exercises]
+
+        parsed = await parse_voice_set(transcript, exercise_names)
+        error = parsed.get("error")
+
+        if error == "ambiguous" or parsed.get("exercise") is None:
+            await msg.edit_text(
+                f"🎤 <i>{transcript}</i>\n\n"
+                "❓ Не смог определить упражнение. Уточни или введи вручную:\n"
+                "<code>80x5</code> или <code>80 5 RPE8</code>",
+                parse_mode="HTML",
+            )
+            return
+
+        weight = parsed.get("weight")
+        reps = parsed.get("reps")
+        if reps is None:
+            await msg.edit_text(
+                f"🎤 <i>{transcript}</i>\n\n"
+                "❓ Не понял количество повторений. Уточни:\n<code>80x5</code>",
+                parse_mode="HTML",
+            )
+            return
+        if weight is None:
+            weight = data.get("current_weight", exercises[data.get("ex_index", 0)]["weight"])
+
+        rpe = float(parsed.get("rpe") or 8.0)
+        ex = exercises[data.get("ex_index", 0)]
+        match_name = parsed["exercise"]
+        if match_name != ex["exercise"]:
+            await msg.edit_text(
+                f"🎤 <i>{transcript}</i>\n\n"
+                f"❓ AI думает это <b>{match_name}</b>, но текущее упражнение — <b>{ex['exercise']}</b>.\n"
+                f"Записать в текущее упражнение? Введи вручную или отправь: <code>{weight}x{reps}</code>",
+                parse_mode="HTML",
+            )
+            return
+
+        await msg.delete()
+        await _advance_after_set(message, state, float(weight), int(reps), rpe, None)
+
+    except Exception as e:
+        await msg.edit_text(f"❌ Ошибка: {e}")
 
 
 @router.message(WorkoutLogging.logging_sets, ~F.text.in_(_NAV_PASSTHROUGH), ~F.text.startswith("/"))
@@ -752,6 +834,8 @@ async def resume_workout(callback: CallbackQuery, state: FSMContext):
         ex_index=ex_index,
         set_index=set_index,
         all_sets=all_sets,
+        notify_pr=user.get("notify_pr", 1),
+        notify_streak=user.get("notify_streak", 1),
     )
 
     ex = exercises[ex_index]
@@ -948,33 +1032,62 @@ async def finish_workout_flow(message: Message, state: FSMContext):
 
     # Прогрессия весов (не применяем на разгрузочной неделе)
     if week_type != "deload":
-        progression = _calculate_progression(all_sets, data["exercises"])
-        if progression:
-            changed = [p for p in progression if p["new_weight"] != p["old_weight"]]
-            for p in changed:
-                await update_exercise_weight(
-                    message.chat.id, week_type, day_type,
-                    p["exercise"], p["new_weight"]
-                )
-            lines_prog = []
-            for p in progression:
-                w_old = _fmt_weight(p["old_weight"])
-                w_new = _fmt_weight(p["new_weight"])
-                if p["new_weight"] != p["old_weight"]:
-                    lines_prog.append(f"{p['icon']} <b>{p['exercise']}</b>: {w_old} → {w_new}кг (RPE {p['avg_rpe']:.1f})")
-                else:
-                    lines_prog.append(f"{p['icon']} <b>{p['exercise']}</b>: {w_old}кг (RPE {p['avg_rpe']:.1f})")
+        lines_prog = []
+        exercises_with_weight = [ex for ex in data["exercises"] if ex["weight"] > 0]
+        for ex in exercises_with_weight:
+            hint = await get_exercise_progression_hint(message.chat.id, ex["exercise"])
+            if not hint:
+                continue
+            new_w = hint["weight"]
+            old_w = ex["weight"]
+            action = hint["action"]
+            reason = hint["reason"]
+            if new_w != old_w:
+                await update_exercise_weight(message.chat.id, week_type, day_type, ex["exercise"], new_w)
+            icon = {"increase": "↗️", "aggressive": "🚀", "hold": "➡️", "decrease": "↘️"}.get(action, "➡️")
+            w_str = f"{_fmt_weight(old_w)} → <b>{_fmt_weight(new_w)}кг</b>" if new_w != old_w else f"<b>{_fmt_weight(old_w)}кг</b>"
+            lines_prog.append(f"{icon} {ex['exercise']}: {w_str}\n   <i>{reason}</i>")
+        if lines_prog:
             prog_msg = await message.answer(
-                "📈 <b>Прогрессия на следующую тренировку:</b>\n\n" + "\n".join(lines_prog),
+                "📈 <b>Прогрессия на следующую тренировку:</b>\n\n" + "\n\n".join(lines_prog),
                 parse_mode="HTML"
             )
             track_msg(message.chat.id, prog_msg.message_id)
 
+    # Стрик
+    streak = await get_workout_streak(message.chat.id)
+    streak_line = ""
+    if data.get("notify_streak", 1) and streak["current"] >= 2:
+        fire = "🔥" * min(streak["current"], 5)
+        milestones = {5: "Пять подряд!", 10: "Десятка!", 20: "Двадцать тренировок подряд! 💪", 50: "50! Легенда!"}
+        milestone = milestones.get(streak["current"], "")
+        streak_line = f"\n{fire} Стрик: <b>{streak['current']} тренировок подряд</b>" + (f" {milestone}" if milestone else "")
+
     next_msg = await message.answer(
-        f"Следующая тренировка: <b>{next_day_label}</b> · {next_week_label}",
+        f"Следующая тренировка: <b>{next_day_label}</b> · {next_week_label}{streak_line}",
         parse_mode="HTML"
     )
     track_msg(message.chat.id, next_msg.message_id)
+
+    # Детекция перетренированности
+    if data.get("notify_overtraining", 1):
+        ot = await get_overtraining_risk(message.chat.id)
+        if ot["risk"] == "high":
+            ot_msg = await message.answer(
+                f"🚨 <b>Признаки перетренированности!</b>\n\n"
+                f"Последние {ot['n_hard']} тренировки подряд — RPE {ot['avg_rpe']:.1f}.\n"
+                f"Тело сигнализирует: нужен отдых или разгрузочная неделя.\n\n"
+                f"<i>Совет: снизь объём на 30–40%, уменьши рабочие веса до 60–70% и поспи как следует.</i>",
+                parse_mode="HTML"
+            )
+            track_msg(message.chat.id, ot_msg.message_id)
+        elif ot["risk"] == "medium":
+            ot_msg = await message.answer(
+                f"⚠️ <b>Нагрузка высокая</b> — {ot['n_hard']} тяжёлых тренировки подряд (RPE {ot['avg_rpe']:.1f}).\n"
+                f"<i>Следи за сном и восстановлением. Если усталость накапливается — рассмотри deload.</i>",
+                parse_mode="HTML"
+            )
+            track_msg(message.chat.id, ot_msg.message_id)
 
 
 @router.message(F.text == "📈 Прогресс")
