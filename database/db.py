@@ -717,8 +717,9 @@ async def get_workout_streak(user_id: int) -> dict:
             break
 
     # Проверяем не устарел ли стрик
+    from datetime import timezone as _tz
     last = datetime.strptime(dates[0], "%Y-%m-%d")
-    days_since = (datetime.utcnow() - last).days
+    days_since = (datetime.now(_tz.utc).replace(tzinfo=None) - last).days
     if days_since > MAX_GAP:
         current = 0
 

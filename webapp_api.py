@@ -562,13 +562,15 @@ _MEAL_META = {
     'other':     {'icon': '📦', 'label': 'Другое'},
 }
 
-def _detect_meal_type() -> str:
-    from datetime import datetime
-    hour = datetime.now().hour
-    if hour < 10:   return 'breakfast'
-    if hour < 14:   return 'lunch'
-    if hour < 18:   return 'snack'
-    return 'dinner'
+def _detect_meal_type(utc_offset: int = 0) -> str:
+    from datetime import datetime, timezone, timedelta
+    hour = datetime.now(timezone(timedelta(hours=utc_offset))).hour
+    if 6 <= hour < 11:  return 'breakfast'
+    if 11 <= hour < 12: return 'snack'
+    if 12 <= hour < 15: return 'lunch'
+    if 15 <= hour < 18: return 'snack'
+    if 18 <= hour < 23: return 'dinner'
+    return 'other'
 
 
 WATER_GOAL = 8
@@ -606,7 +608,8 @@ async def log_food_photo_upload(
         raise HTTPException(status_code=400, detail="File too large (max 10MB)")
     from services.ai_service import parse_food_photo
     result = _cap_kbju(await parse_food_photo(image_bytes))
-    meal_type = _detect_meal_type()
+    user = await get_user(user_id)
+    meal_type = _detect_meal_type(user.get("utc_offset", 0) if user else 0)
     entry_id = await log_food(
         user_id, today(),
         result.get("description", "Блюдо с фото"),
@@ -640,7 +643,8 @@ async def log_food_voice(
     if not text.strip():
         raise HTTPException(status_code=422, detail="Не удалось распознать речь")
     result = _cap_kbju(await parse_food(text))
-    meal_type = _detect_meal_type()
+    user = await get_user(user_id)
+    meal_type = _detect_meal_type(user.get("utc_offset", 0) if user else 0)
     entry_id = await log_food(
         user_id, today(),
         result.get("description", text[:200]),
@@ -751,9 +755,10 @@ class LogFoodRequest(BaseModel):
 @app.post("/api/nutrition/log")
 async def log_food_endpoint(body: LogFoodRequest, x_init_data: str = Header(alias="x-init-data")):
     user_id = validate_init_data(x_init_data)
+    user = await get_user(user_id)
     from services.ai_service import parse_food
     result = _cap_kbju(await parse_food(body.text))
-    meal_type = _detect_meal_type()
+    meal_type = _detect_meal_type(user.get("utc_offset", 0) if user else 0)
     entry_id = await log_food(
         user_id, today(),
         result.get("description", body.text[:100]),
@@ -904,7 +909,8 @@ async def program_endpoint(x_init_data: str = Header(alias="x-init-data")):
 @app.get("/api/nutrition/templates")
 async def nutrition_templates(x_init_data: str = Header(alias="x-init-data")):
     user_id = validate_init_data(x_init_data)
-    meal_type = _detect_meal_type()
+    user = await get_user(user_id)
+    meal_type = _detect_meal_type(user.get("utc_offset", 0) if user else 0)
     foods = await get_meal_suggestions(user_id, meal_type, limit=8)
     return {"templates": foods}
 
@@ -913,9 +919,10 @@ async def nutrition_templates(x_init_data: str = Header(alias="x-init-data")):
 async def log_template(body: LogFoodRequest, x_init_data: str = Header(alias="x-init-data")):
     """Log a food using a pre-parsed template (skip AI parsing, use stored КБЖУ)."""
     user_id = validate_init_data(x_init_data)
+    user = await get_user(user_id)
     from services.ai_service import parse_food
     result = _cap_kbju(await parse_food(body.text))
-    meal_type = _detect_meal_type()
+    meal_type = _detect_meal_type(user.get("utc_offset", 0) if user else 0)
     entry_id = await log_food(
         user_id, today(),
         result.get("description", body.text[:100]),
