@@ -1,7 +1,8 @@
 import { useEffect, useReducer, useRef, useState, useCallback, memo } from 'react'
-import { api } from '../api'
+import { api, friendlyError } from '../api'
 import { haptic } from '../tg'
 import { playSound, getRestSound } from '../sounds'
+import DumbbellPressAnalysis from '../components/DumbbellPressAnalysis'
 
 // ── Elapsed timer ────────────────────────────────────────────────────────────
 function ElapsedTimer({ startedAt }) {
@@ -20,17 +21,6 @@ function ElapsedTimer({ startedAt }) {
     : `${m}:${String(s).padStart(2, '0')}`
 
   return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt}</span>
-}
-
-// ── Rest seconds parser ───────────────────────────────────────────────────────
-function parseRestSecs(rest) {
-  if (!rest || rest === '—') return 0
-  let s = 0
-  const m = rest.match(/(\d+)м/)
-  const sec = rest.match(/(\d+)с/)
-  if (m) s += parseInt(m[1]) * 60
-  if (sec) s += parseInt(sec[1])
-  return s || 120
 }
 
 // ── Exercise info panel (image + brief technique) ─────────────────────────────
@@ -102,7 +92,7 @@ function Stepper({ value, onChange, step, min = 0, fmt = (v) => v }) {
   )
 }
 
-function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRange, lastWeight, lastReps, lastRpe, suggestedWeight, restSecs, onLog }) {
+function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRange, lastWeight, lastReps, lastRpe, suggestedWeight, restSecs, allExercises = [], onLog }) {
   const initWeight = plannedWeight || suggestedWeight || 0
   const initReps = parseInt(String(repsRange).split('-')[0]) || 5
 
@@ -114,6 +104,65 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
   const [done, setDone] = useState(false)
   const [restRemaining, setRestRemaining] = useState(0)
   const restRef = useRef(null)
+
+  // Voice
+  const [voiceState, setVoiceState] = useState('idle') // idle | recording | processing
+  const [voicePreview, setVoicePreview] = useState(null) // {transcript, weight, reps, rpe, error}
+  const mediaRef = useRef(null)
+  const chunksRef = useRef([])
+  const streamRef = useRef(null)
+
+  useEffect(() => () => {
+    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop())
+    if (mediaRef.current?.state !== 'inactive') mediaRef.current?.stop()
+  }, [])
+
+  const startVoice = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+      const mr = new MediaRecorder(stream, { mimeType })
+      chunksRef.current = []
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        streamRef.current = null
+        setVoiceState('processing')
+        try {
+          const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+          const fd = new FormData()
+          fd.append('file', blob, 'voice.webm')
+          fd.append('exercises', allExercises.join('|||'))
+          const res = await api.logWorkoutVoice(fd)
+          setVoicePreview(res)
+          haptic('light')
+        } catch {
+          haptic('error')
+          setVoicePreview({ error: 'server' })
+        } finally {
+          setVoiceState('idle')
+        }
+      }
+      mr.start()
+      mediaRef.current = mr
+      setVoiceState('recording')
+      haptic('medium')
+    } catch {
+      alert('Нет доступа к микрофону')
+    }
+  }
+
+  const stopVoice = () => { mediaRef.current?.stop() }
+
+  const applyVoice = () => {
+    if (!voicePreview) return
+    if (voicePreview.weight != null) setWeight(voicePreview.weight)
+    if (voicePreview.reps != null) setReps(voicePreview.reps)
+    if (voicePreview.rpe != null) setRpe(String(voicePreview.rpe))
+    setVoicePreview(null)
+    haptic('medium')
+  }
 
   useEffect(() => () => clearInterval(restRef.current), [])
 
@@ -143,6 +192,9 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
       setRpe('8')
       setNotes('')
       if (restSecs > 0) startRest(restSecs)
+    } catch (e) {
+      haptic('error')
+      alert(friendlyError(e))
     } finally {
       setLoading(false)
     }
@@ -211,13 +263,116 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
         style={{ marginBottom: 12 }}
       />
 
-      <button
-        className={`btn-primary${done ? ' btn-success' : ''}`}
-        disabled={loading}
-        onClick={submit}
-      >
-        {loading ? 'Сохраняю...' : done ? '✓ Записано!' : 'Записать подход ✓'}
-      </button>
+      {/* Voice preview */}
+      {voicePreview && (
+        <div style={{
+          background: voicePreview.error ? 'rgba(255,69,58,.08)' : 'rgba(10,132,255,.08)',
+          border: `1px solid ${voicePreview.error ? 'rgba(255,69,58,.25)' : 'rgba(10,132,255,.25)'}`,
+          borderRadius: 12, padding: '12px 14px', marginBottom: 12,
+          animation: 'fadeSlideIn 0.25s ease',
+        }}>
+          {voicePreview.error && voicePreview.error !== 'server' ? (
+            <div style={{ fontSize: 13, color: 'var(--hint)' }}>
+              🎙 <span style={{ fontStyle: 'italic' }}>«{voicePreview.transcript}»</span>
+              <div style={{ color: '#ff453a', marginTop: 4, fontSize: 12 }}>
+                {voicePreview.error === 'ambiguous' ? 'Не понял упражнение — скажи точнее' :
+                 voicePreview.error === 'no_weight' ? 'Не указан вес' :
+                 voicePreview.error === 'no_reps' ? 'Не указаны повторы' : 'Ошибка'}
+              </div>
+            </div>
+          ) : voicePreview.error === 'server' ? (
+            <div style={{ fontSize: 13, color: '#ff453a' }}>Ошибка сервера — попробуй ещё раз</div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: 'var(--hint)', marginBottom: 4 }}>
+                  🎙 «{voicePreview.transcript}»
+                </div>
+                <div style={{ fontSize: 15, fontWeight: 700 }}>
+                  {voicePreview.weight != null ? `${voicePreview.weight}кг` : '—'}
+                  {' × '}
+                  {voicePreview.reps != null ? voicePreview.reps : '—'}
+                  {voicePreview.rpe != null && (
+                    <span style={{ fontSize: 12, color: 'var(--hint)', fontWeight: 400, marginLeft: 8 }}>
+                      RPE {voicePreview.rpe}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={() => setVoicePreview(null)} style={{
+                  background: 'var(--bg3)', border: 'none', borderRadius: 8,
+                  padding: '7px 10px', color: 'var(--hint)', fontSize: 13, cursor: 'pointer',
+                }}>✕</button>
+                <button onClick={applyVoice} style={{
+                  background: 'var(--blue)', border: 'none', borderRadius: 8,
+                  padding: '7px 14px', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                }}>Применить</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Voice recording state */}
+      {voiceState === 'recording' && (
+        <div style={{
+          background: 'rgba(255,69,58,.08)', border: '1px solid rgba(255,69,58,.25)',
+          borderRadius: 12, padding: '12px 14px', marginBottom: 12,
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <div style={{ flex: 1, display: 'flex', gap: 3, alignItems: 'center', height: 28 }}>
+            {[0,1,2,3,4,5,6,7,8,9,10].map(i => (
+              <div key={i} style={{
+                width: 3, borderRadius: 2, background: '#ff453a',
+                height: 28,
+                animation: `voiceWave 0.85s ease-in-out ${i * 0.07}s infinite alternate`,
+              }} />
+            ))}
+          </div>
+          <button onClick={stopVoice} style={{
+            background: 'rgba(255,69,58,.15)', border: 'none', borderRadius: 10,
+            color: '#ff453a', fontSize: 13, fontWeight: 700, padding: '7px 14px', cursor: 'pointer',
+          }}>⏹ Стоп</button>
+        </div>
+      )}
+
+      {voiceState === 'processing' && (
+        <div style={{
+          background: 'rgba(10,132,255,.06)', borderRadius: 12, padding: '12px 14px',
+          marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <span className="spinner-dots" />
+          <span style={{ fontSize: 13, color: 'var(--hint)' }}>Распознаю речь...</span>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 0 }}>
+        <button
+          onClick={() => voiceState === 'recording' ? stopVoice() : startVoice()}
+          disabled={voiceState === 'processing'}
+          title="Голосовой ввод"
+          style={{
+            width: 52, flexShrink: 0,
+            background: voiceState === 'recording' ? 'rgba(255,69,58,.15)' : 'var(--bg)',
+            border: `1.5px solid ${voiceState === 'recording' ? 'rgba(255,69,58,.4)' : 'var(--sep)'}`,
+            borderRadius: 14, fontSize: 20, cursor: voiceState === 'processing' ? 'default' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            opacity: voiceState === 'processing' ? 0.4 : 1,
+            transition: 'background 0.2s, border 0.2s',
+          }}
+        >
+          {voiceState === 'recording' ? '⏹' : '🎙'}
+        </button>
+        <button
+          className={`btn-primary${done ? ' btn-success' : ''}`}
+          style={{ flex: 1, marginBottom: 0 }}
+          disabled={loading}
+          onClick={submit}
+        >
+          {loading ? 'Сохраняю...' : done ? '✓ Записано!' : 'Записать подход ✓'}
+        </button>
+      </div>
 
       {restRemaining > 0 && (
         <div style={{
@@ -251,13 +406,20 @@ function FinishScreen({ result, onBack, onGoProgress }) {
 
   useEffect(() => {
     if (!result.workout_id) return
+    let attempts = 0
+    const MAX_ATTEMPTS = 30 // 75 seconds max
     const poll = async () => {
+      attempts++
       try {
         const res = await api.workoutAnalysis(result.workout_id)
         if (res.ready) {
           clearInterval(intervalRef.current)
           setAnalysis(res.analysis)
           setAnalysisLoading(false)
+        } else if (attempts >= MAX_ATTEMPTS) {
+          clearInterval(intervalRef.current)
+          setAnalysisLoading(false)
+          setAnalysis('Анализ недоступен — попробуй открыть тренировку позже.')
         }
       } catch {
         clearInterval(intervalRef.current)
@@ -510,6 +672,12 @@ export default function Workout({ onGoProgress }) {
   const [state, dispatch] = useReducer(reducer, initial)
   const { plan, loading, err, workoutId, exercises, exIndex, setIndex, loggedSets, finishResult, finishing, startedAt } = state
   const finishingRef = useRef(false)
+  const [showPressAnalysis, setShowPressAnalysis] = useState(false)
+  const pressAnalysisEnabled = localStorage.getItem('press_analysis_enabled') === '1'
+  const [prBanner, setPrBanner] = useState(null) // { exercise, type: 'weight'|'1rm' }
+  const prTimerRef = useRef(null)
+
+  useEffect(() => { return () => clearTimeout(prTimerRef.current) }, [])
 
   useEffect(() => {
     api.workoutPlan()
@@ -528,7 +696,7 @@ export default function Workout({ onGoProgress }) {
     const isLastSet = setIndex + 1 >= ex.sets
     const nextExIndex = isLastSet ? exIndex + 1 : exIndex
     const nextSetIndex = isLastSet ? 0 : setIndex + 1
-    await api.logSet({
+    const logRes = await api.logSet({
       workout_id: workoutId,
       exercise: ex.exercise,
       set_number: setIndex + 1,
@@ -540,6 +708,13 @@ export default function Workout({ onGoProgress }) {
       ex_index: nextExIndex,
       set_index: nextSetIndex,
     })
+
+    if (logRes?.pr) {
+      clearTimeout(prTimerRef.current)
+      haptic('heavy')
+      setPrBanner({ exercise: ex.exercise, type: logRes.pr, weight, reps })
+      prTimerRef.current = setTimeout(() => setPrBanner(null), 4000)
+    }
 
     const newSet = { id: `${ex.exercise}-${setIndex}-${Date.now()}`, exercise: ex.exercise, actual_weight: weight, reps, rpe }
     dispatch({ type: 'LOG', set: newSet })
@@ -625,6 +800,26 @@ export default function Workout({ onGoProgress }) {
         </div>
       </div>
 
+      {/* PR Banner */}
+      {prBanner && (
+        <div onClick={() => setPrBanner(null)} style={{
+          background: 'linear-gradient(135deg, #ff9f0a 0%, #ff6b00 100%)',
+          borderRadius: 14, padding: '14px 16px', marginBottom: 12,
+          display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer',
+          animation: 'fadeSlideIn 0.3s ease',
+        }}>
+          <span style={{ fontSize: 32 }}>🏆</span>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#fff' }}>
+              {prBanner.type === 'weight' ? 'Новый рекорд веса!' : 'Новый расчётный 1ПМ!'}
+            </div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', marginTop: 2 }}>
+              {prBanner.exercise} · {prBanner.weight}кг × {prBanner.reps}
+            </div>
+          </div>
+        </div>
+      )}
+
       <SetForm
         key={exIndex}
         exercise={ex.exercise}
@@ -637,9 +832,31 @@ export default function Workout({ onGoProgress }) {
         lastReps={ex.last_reps}
         lastRpe={ex.last_rpe}
         suggestedWeight={ex.suggested_weight}
-        restSecs={parseRestSecs(ex.rest)}
+        restSecs={ex.rest_secs || 0}
+        allExercises={exercises.map(e => e.exercise)}
         onLog={handleLog}
       />
+
+      {pressAnalysisEnabled && ex.exercise.toLowerCase().includes('жим гантелей') && (
+        <button
+          onClick={() => { haptic('light'); setShowPressAnalysis(true) }}
+          style={{
+            width: '100%', marginBottom: 8,
+            background: 'rgba(10,132,255,0.15)', border: '1px solid rgba(10,132,255,0.3)',
+            borderRadius: 14, padding: '11px', fontSize: 14, fontWeight: 600,
+            color: '#0a84ff', cursor: 'pointer',
+          }}
+        >
+          📹 Анализ жима
+        </button>
+      )}
+
+      {showPressAnalysis && (
+        <DumbbellPressAnalysis
+          exercise={ex.exercise}
+          onClose={() => setShowPressAnalysis(false)}
+        />
+      )}
 
       {/* Logged sets */}
       {loggedSets.length > 0 && (
@@ -665,7 +882,13 @@ export default function Workout({ onGoProgress }) {
         className="btn-secondary"
         style={{ width: '100%', marginTop: 4 }}
         disabled={finishing}
-        onClick={() => doFinish()}
+        onClick={() => {
+          haptic('light')
+          window.Telegram?.WebApp?.showConfirm(
+            'Тренировка будет завершена. Точно закончить?',
+            (ok) => { if (ok) doFinish() }
+          ) ?? doFinish()
+        }}
       >
         {finishing ? 'Завершаем...' : '🏁 Завершить тренировку'}
       </button>

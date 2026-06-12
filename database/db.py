@@ -92,6 +92,22 @@ async def init_db():
             ("notif_breakfast", "INTEGER DEFAULT 1"),
             ("notif_workout", "INTEGER DEFAULT 1"),
             ("notif_evening", "INTEGER DEFAULT 0"),
+            ("press_analysis_enabled", "INTEGER DEFAULT 0"),
+            ("notify_pr", "INTEGER DEFAULT 1"),
+            ("notify_streak", "INTEGER DEFAULT 1"),
+            ("notify_plateau", "INTEGER DEFAULT 1"),
+            ("notify_weekly_report", "INTEGER DEFAULT 1"),
+            ("notify_morning_brief", "INTEGER DEFAULT 1"),
+            ("morning_brief_hour", "INTEGER DEFAULT 8"),
+            ("morning_brief_minute", "INTEGER DEFAULT 0"),
+            ("brief_workout",   "INTEGER DEFAULT 1"),
+            ("brief_yesterday", "INTEGER DEFAULT 1"),
+            ("brief_nutrient",  "INTEGER DEFAULT 1"),
+            ("brief_food_idea", "INTEGER DEFAULT 0"),
+            ("brief_recovery",  "INTEGER DEFAULT 1"),
+            ("brief_week_prog", "INTEGER DEFAULT 1"),
+            ("brief_tip",       "INTEGER DEFAULT 1"),
+            ("brief_water",     "INTEGER DEFAULT 1"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -218,6 +234,19 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS db_press_analyses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                set_id INTEGER,
+                timestamp TEXT NOT NULL,
+                left_angle REAL,
+                right_angle REAL,
+                depth TEXT,
+                warnings TEXT,
+                recommendation TEXT
+            )
+        """)
         await db.commit()
 
 
@@ -314,12 +343,7 @@ async def get_user(user_id: int) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            """SELECT user_id, name, age, weight, height, goal, experience,
-                      days_per_week, equipment, injuries,
-                      goal_calories, goal_protein, goal_carbs, goal_fat,
-                      current_week, current_week_type, current_day_index,
-                      onboarded, created_at
-               FROM users WHERE user_id = ?""",
+            "SELECT * FROM users WHERE user_id = ?",
             (user_id,)
         ) as cur:
             row = await cur.fetchone()
@@ -351,6 +375,11 @@ _ALLOWED_USER_FIELDS = {
     "onboarded", "utc_offset",
     "water_goal", "water_interval",
     "notif_water", "notif_breakfast", "notif_workout", "notif_evening",
+    "notify_pr", "notify_streak", "notify_plateau", "notify_weekly_report",
+    "notify_morning_brief", "morning_brief_hour", "morning_brief_minute",
+    "press_analysis_enabled",
+    "brief_workout", "brief_yesterday", "brief_nutrient", "brief_food_idea",
+    "brief_recovery", "brief_week_prog", "brief_tip", "brief_water",
 }
 
 async def update_user(user_id: int, **kwargs):
@@ -546,6 +575,17 @@ async def get_last_workouts(user_id: int, limit: int = 5) -> list[dict]:
             return [dict(r) for r in await cur.fetchall()]
 
 
+async def get_week_workout_count(user_id: int, from_date: str) -> int:
+    """Число завершённых тренировок начиная с from_date (YYYY-MM-DD)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM workouts WHERE user_id=? AND is_finished=1 AND date>=?",
+            (user_id, from_date)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else 0
+
+
 async def get_workout_sets(workout_id: int) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -569,6 +609,15 @@ async def update_workout_set(set_id: int, weight: float, reps: int, rpe: float):
         await db.execute(
             "UPDATE workout_sets SET actual_weight=?, reps=?, rpe=? WHERE id=?",
             (weight, reps, rpe, set_id)
+        )
+        await db.commit()
+
+
+async def update_workout_set(set_id: int, actual_weight: float, reps: int, rpe: float, notes: str | None):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE workout_sets SET actual_weight=?, reps=?, rpe=?, notes=? WHERE id=?",
+            (actual_weight, reps, rpe, notes, set_id)
         )
         await db.commit()
 
@@ -627,6 +676,90 @@ async def get_all_time_stats(user_id: int) -> dict:
         ) as cur:
             row = await cur.fetchone()
             return {"total_workouts": row[0] or 0, "total_tonnage": row[1] or 0}
+
+
+async def get_workout_streak(user_id: int) -> dict:
+    """Считает текущий стрик тренировок.
+    Стрик = последовательные тренировки без перерыва > 12 дней.
+    Возвращает: {current, longest, last_date}
+    """
+    from datetime import datetime, timedelta
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT date FROM workouts WHERE user_id=? AND is_finished=1 ORDER BY date DESC",
+            (user_id,)
+        ) as cur:
+            rows = await cur.fetchall()
+
+    if not rows:
+        return {"current": 0, "longest": 0, "last_date": None}
+
+    dates = sorted({r[0] for r in rows}, reverse=True)
+    MAX_GAP = 12  # дней
+
+    # Текущий стрик
+    current = 1
+    for i in range(len(dates) - 1):
+        d1 = datetime.strptime(dates[i], "%Y-%m-%d")
+        d2 = datetime.strptime(dates[i + 1], "%Y-%m-%d")
+        if (d1 - d2).days <= MAX_GAP:
+            current += 1
+        else:
+            break
+
+    # Проверяем не устарел ли стрик (последняя тренировка > 12 дней назад)
+    last = datetime.strptime(dates[0], "%Y-%m-%d")
+    days_since = (datetime.utcnow() - last).days
+    if days_since > MAX_GAP:
+        current = 0
+
+    # Longest streak
+    longest = 1
+    run = 1
+    for i in range(len(dates) - 1):
+        d1 = datetime.strptime(dates[i], "%Y-%m-%d")
+        d2 = datetime.strptime(dates[i + 1], "%Y-%m-%d")
+        if (d1 - d2).days <= MAX_GAP:
+            run += 1
+            longest = max(longest, run)
+        else:
+            run = 1
+
+    return {"current": current, "longest": longest, "last_date": dates[0]}
+
+
+async def get_plateau_exercises(user_id: int) -> list[dict]:
+    """Упражнения в плато: 3+ тренировки подряд с одинаковым весом."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT DISTINCT s.exercise
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1 AND s.actual_weight > 0""",
+            (user_id,)
+        ) as cur:
+            exercises = [r[0] for r in await cur.fetchall()]
+
+    plateaus = []
+    async with aiosqlite.connect(DB_PATH) as db:
+        for ex in exercises:
+            async with db.execute(
+                """SELECT MAX(s.actual_weight) as max_w, AVG(s.rpe) as avg_rpe
+                   FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+                   WHERE w.user_id=? AND w.is_finished=1 AND s.exercise=? AND s.actual_weight > 0
+                   GROUP BY w.id ORDER BY w.date DESC LIMIT 4""",
+                (user_id, ex)
+            ) as cur:
+                sessions = await cur.fetchall()
+
+            if len(sessions) < 3:
+                continue
+            weights = [r[0] for r in sessions[:3]]
+            avg_rpe = sum(r[1] or 8.0 for r in sessions[:3]) / 3
+            if len(set(weights)) == 1:
+                plateaus.append({"exercise": ex, "weight": weights[0], "sessions": 3, "avg_rpe": avg_rpe})
+
+    return plateaus
 
 
 async def get_exercise_prs(user_id: int, limit: int = 6) -> list[dict]:
@@ -1125,3 +1258,103 @@ async def get_weekly_kbju_days_in_norm(user_id: int, week_start: str, week_end: 
             days = await cur.fetchall()
         lo, hi = goal * (1 - tolerance), goal * (1 + tolerance)
         return sum(1 for _, cal in days if lo <= (cal or 0) <= hi)
+
+
+async def save_press_analysis(
+    user_id: int,
+    set_id: int | None,
+    left_angle: float,
+    right_angle: float,
+    depth: str,
+    warnings: dict,
+    recommendation: str,
+) -> int:
+    import json as _json
+    from datetime import datetime
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """INSERT INTO db_press_analyses
+               (user_id, set_id, timestamp, left_angle, right_angle, depth, warnings, recommendation)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                user_id,
+                set_id,
+                datetime.utcnow().isoformat(),
+                left_angle,
+                right_angle,
+                depth,
+                _json.dumps(warnings, ensure_ascii=False),
+                recommendation,
+            ),
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def check_exercise_pr(user_id: int, exercise: str, weight: float, reps: int, current_workout_id: int) -> str | None:
+    """Проверяет PR после подхода. Возвращает тип: 'weight'|'1rm'|None.
+    1RM по формуле Эпли: weight * (1 + reps/30).
+    """
+    new_1rm = weight * (1 + reps / 30.0)
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            """SELECT MAX(s.actual_weight), MAX(s.actual_weight * (1 + s.reps / 30.0))
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1 AND s.exercise=?
+                 AND s.actual_weight > 0 AND w.id != ?""",
+            (user_id, exercise, current_workout_id),
+        ) as cur:
+            row = await cur.fetchone()
+    if not row or row[0] is None:
+        return None
+    best_weight, best_1rm = row
+    if weight > best_weight:
+        return "weight"
+    if new_1rm > (best_1rm or 0) + 0.5:
+        return "1rm"
+    return None
+
+
+async def get_exercise_progression_hint(user_id: int, exercise: str) -> dict:
+    """Анализирует последние 4 тренировки упражнения и возвращает рекомендацию по весу.
+    Возвращает: {weight, action: 'increase'|'hold'|'decrease'|'aggressive', reason}
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            """SELECT w.id, w.date, MAX(s.actual_weight) as max_weight,
+                      AVG(s.rpe) as avg_rpe
+               FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+               WHERE w.user_id=? AND w.is_finished=1 AND s.exercise=? AND s.actual_weight > 0
+               GROUP BY w.id ORDER BY w.date DESC LIMIT 4""",
+            (user_id, exercise),
+        ) as cur:
+            sessions = [dict(r) for r in await cur.fetchall()]
+
+    if not sessions:
+        return {}
+
+    latest = sessions[0]
+    w = latest["max_weight"]
+    rpe = latest["avg_rpe"] or 8.0
+
+    if len(sessions) >= 3:
+        weights = [s["max_weight"] for s in sessions[:3]]
+        rpes = [s["avg_rpe"] or 8.0 for s in sessions[:3]]
+        stagnant = len(set(weights)) == 1
+        avg_rpe_3 = sum(rpes) / len(rpes)
+
+        if stagnant and avg_rpe_3 <= 7.5:
+            return {"weight": w + 5.0, "action": "aggressive",
+                    "reason": f"3 тренировки подряд {w:.1f}кг, RPE {avg_rpe_3:.1f} — время прибавить смелее"}
+        if stagnant and avg_rpe_3 <= 8.5:
+            return {"weight": w + 2.5, "action": "increase",
+                    "reason": f"3 тренировки подряд {w:.1f}кг — пора добавить"}
+
+    if rpe <= 7.5:
+        return {"weight": w + 2.5, "action": "increase", "reason": f"RPE {rpe:.1f} — легко, повышаем"}
+    if rpe <= 8.5:
+        return {"weight": w, "action": "hold", "reason": f"RPE {rpe:.1f} — оптимально, держим вес"}
+    if rpe <= 9.5:
+        return {"weight": w, "action": "hold", "reason": f"RPE {rpe:.1f} — тяжело, закрепляем вес"}
+    return {"weight": max(w - 2.5, 2.5), "action": "decrease", "reason": f"RPE {rpe:.1f} — слишком тяжело, снижаем"}

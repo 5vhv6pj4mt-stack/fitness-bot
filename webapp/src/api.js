@@ -65,6 +65,7 @@ export const api = {
   logTemplate: (text) => req('/nutrition/log-template', { method: 'POST', body: JSON.stringify({ text }) }),
   logPhoto: (formData) => req('/nutrition/log-photo', { method: 'POST', body: formData }),
   logVoice: (formData) => req('/nutrition/log-voice', { method: 'POST', body: formData }),
+  logWorkoutVoice: (formData) => req('/workout/log-voice', { method: 'POST', body: formData }),
   waterToday: () => req('/water/today'),
   waterAdd: () => req('/water/add', { method: 'POST', body: '{}' }),
   bodyData: () => req('/body'),
@@ -79,5 +80,33 @@ export const api = {
   workoutAnalysis: (id) => req(`/workout/${id}/analysis`),
   recentWorkouts: () => req('/workout/recent'),
   deleteSet: (setId) => req(`/workout/set/${setId}`, { method: 'DELETE' }),
+  updateSet: (setId, data) => req(`/workout/set/${setId}`, { method: 'PATCH', body: JSON.stringify(data) }),
   exerciseInfo: (name) => req(`/exercise/info?name=${encodeURIComponent(name)}`),
+  pressAnalysisStatus: (taskId) => req(`/press_analysis_status/${taskId}`),
+  uploadPressVideo: (file, setId, onProgress) => new Promise((resolve, reject) => {
+    const initData = getInitData()
+    const formData = new FormData()
+    formData.append('video', file)
+    if (setId != null) formData.append('set_id', String(setId))
+
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', BASE + '/analyze_dumbbell_press')
+    xhr.setRequestHeader('x-init-data', initData)
+    xhr.timeout = 120000
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round(e.loaded / e.total * 100))
+    }
+    xhr.upload.onload = () => { if (onProgress) onProgress(100) }
+
+    xhr.onload = () => {
+      try {
+        const data = JSON.parse(xhr.responseText)
+        xhr.status >= 400 ? reject(new Error(data.detail || data.message || 'Ошибка')) : resolve(data)
+      } catch { reject(new Error('Ошибка ответа сервера')) }
+    }
+    xhr.onerror = () => reject(new Error('Сетевая ошибка'))
+    xhr.ontimeout = () => reject(new Error('Сервер не отвечает — видео слишком тяжёлое или анализ завис'))
+    xhr.send(formData)
+  }),
 }

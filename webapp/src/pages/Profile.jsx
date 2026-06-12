@@ -125,12 +125,13 @@ export default function Profile({ onBack }) {
   useEffect(() => { load() }, [])
 
   const save = async (field, value) => {
+    const oldValue = data[field]
     setData((prev) => ({ ...prev, [field]: value }))
     try {
       await api.profileUpdate({ [field]: value })
       showToast('Сохранено ✓')
     } catch (e) {
-      setData((prev) => ({ ...prev, [field]: typeof value === 'boolean' ? !value : prev[field] }))
+      setData((prev) => ({ ...prev, [field]: oldValue }))
       showToast(friendlyError(e), true)
     }
   }
@@ -288,6 +289,99 @@ export default function Profile({ onBack }) {
           <div className="sr-label">Вечерний итог дня</div>
           <Toggle on={!!data.notif_evening} onChange={(v) => save('notif_evening', v)} />
         </div>
+      </div>
+
+      {/* Прогресс-уведомления */}
+      <div className="settings-group">
+        <div className="sg-title">Уведомления о прогрессе</div>
+        {[
+          { field: 'notify_pr',            icon: '🏆', bg: 'rgba(255,159,10,.12)', label: 'Личный рекорд (PR)',        desc: 'Когда побиваешь свой максимум' },
+          { field: 'notify_streak',        icon: '🔥', bg: 'rgba(255,69,58,.12)',  label: 'Серия тренировок',         desc: 'Каждые 5 тренировок подряд' },
+          { field: 'notify_plateau',       icon: '⚠️', bg: 'rgba(255,214,10,.12)', label: 'Плато',                    desc: '3+ тренировки без роста веса' },
+          { field: 'notify_weekly_report', icon: '📋', bg: 'rgba(48,209,88,.12)',  label: 'Еженедельный отчёт',       desc: 'Воскресенье, 20:00' },
+        ].map(({ field, icon, bg, label, desc }) => (
+          <div key={field} className="sr">
+            <div className="sr-icon" style={{ background: bg }}>{icon}</div>
+            <div style={{ flex: 1 }}>
+              <div className="sr-label">{label}</div>
+              <div style={{ fontSize: 11, color: 'var(--hint)', marginTop: 1 }}>{desc}</div>
+            </div>
+            <Toggle on={!!data[field]} onChange={(v) => save(field, v)} />
+          </div>
+        ))}
+      </div>
+
+      {/* Утренний бриф */}
+      <div className="settings-group">
+        <div className="sg-title">Утренний бриф</div>
+        <div className="sr">
+          <div className="sr-icon" style={{ background: 'rgba(255,159,10,.12)' }}>🌅</div>
+          <div className="sr-label">Включить утренний бриф</div>
+          <Toggle on={!!data.notify_morning_brief} onChange={(v) => save('notify_morning_brief', v)} />
+        </div>
+
+        {!!data.notify_morning_brief && (
+          <>
+            {/* Время */}
+            <div style={{ padding: '10px 16px 12px', borderTop: '1px solid var(--sep)' }}>
+              <div style={{ fontSize: 12, color: 'var(--hint)', marginBottom: 8 }}>Время отправки</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <select
+                  value={data.morning_brief_hour ?? 8}
+                  onChange={e => save('morning_brief_hour', parseInt(e.target.value))}
+                  style={{
+                    flex: 1, background: 'var(--bg)', color: 'var(--text)',
+                    border: '1px solid var(--border)', borderRadius: 10,
+                    padding: '9px 12px', fontSize: 15, fontWeight: 600,
+                  }}
+                >
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+                  ))}
+                </select>
+                <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--hint)' }}>:</span>
+                <select
+                  value={data.morning_brief_minute ?? 0}
+                  onChange={e => save('morning_brief_minute', parseInt(e.target.value))}
+                  style={{
+                    flex: 1, background: 'var(--bg)', color: 'var(--text)',
+                    border: '1px solid var(--border)', borderRadius: 10,
+                    padding: '9px 12px', fontSize: 15, fontWeight: 600,
+                  }}
+                >
+                  {[0, 15, 30, 45].map(m => (
+                    <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Секции брифа */}
+            <div style={{ padding: '0 16px 12px', borderTop: '1px solid var(--sep)' }}>
+              <div style={{ fontSize: 12, color: 'var(--hint)', margin: '10px 0 8px' }}>Что включить в бриф</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {[
+                  { field: 'brief_workout',   label: '💪 Тренировка сегодня' },
+                  { field: 'brief_yesterday',  label: '📊 Итог вчера' },
+                  { field: 'brief_nutrient',   label: '🥗 Нутриент дня' },
+                  { field: 'brief_food_idea',  label: '🍽 Идея блюда' },
+                  { field: 'brief_recovery',   label: '😴 Совет по восстановлению' },
+                  { field: 'brief_week_prog',  label: '📈 Прогресс недели' },
+                  { field: 'brief_tip',        label: '💡 Совет тренера' },
+                  { field: 'brief_water',      label: '💧 Напоминание о воде' },
+                ].map(({ field, label }) => (
+                  <div key={field} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '8px 0', borderBottom: '1px solid var(--sep)',
+                  }}>
+                    <span style={{ fontSize: 14, color: 'var(--text)' }}>{label}</span>
+                    <Toggle on={!!data[field]} onChange={(v) => save(field, v)} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Экспериментальное */}

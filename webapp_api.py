@@ -39,6 +39,9 @@ from database.db import (
     update_exercise_weight,
     delete_workout_set, update_workout_set, recalculate_workout_totals, get_recent_workouts,
     save_press_analysis,
+    get_workout_streak,
+    check_exercise_pr,
+    get_plateau_exercises,
 )
 
 from contextlib import asynccontextmanager
@@ -203,6 +206,8 @@ async def dashboard(x_init_data: str = Header(alias="x-init-data")):
         for w in workouts
     ]
 
+    streak = await get_workout_streak(user_id)
+
     # Week stats: current week vs previous week
     today_date = date_cls.today()
     week_start = today_date - timedelta(days=today_date.weekday())
@@ -241,6 +246,11 @@ async def dashboard(x_init_data: str = Header(alias="x-init-data")):
             "workouts_count": len(this_week),
             "tonnage": round(this_tonnage),
             "delta": delta,
+        },
+        "streak": {
+            "current": streak["current"],
+            "longest": streak["longest"],
+            "last_date": streak["last_date"],
         },
     }
 
@@ -329,7 +339,12 @@ async def log_set_endpoint(body: LogSetRequest, x_init_data: str = Header(alias=
         body.planned_weight, body.actual_weight, body.reps, body.rpe, body.notes
     )
     await update_workout_progress(body.workout_id, body.ex_index, body.set_index)
-    return {"ok": True}
+    pr_type = None
+    if body.actual_weight > 0:
+        pr_type = await check_exercise_pr(
+            user_id, body.exercise, body.actual_weight, body.reps, body.workout_id
+        )
+    return {"ok": True, "pr": pr_type}
 
 
 class SetData(BaseModel):
@@ -644,6 +659,32 @@ async def log_food_voice(
     }
 
 
+@app.post("/api/workout/log-voice")
+async def log_workout_voice(
+    x_init_data: str = Header(alias="x-init-data"),
+    file: UploadFile = File(...),
+    exercises: str = "",
+):
+    user_id = validate_init_data(x_init_data)
+    audio_bytes = await file.read()
+    if len(audio_bytes) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 25MB)")
+    from services.ai_service import transcribe_voice, parse_voice_set
+    text = await transcribe_voice(audio_bytes, filename=file.filename or "voice.webm")
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="Не удалось распознать речь")
+    ex_list = [e.strip() for e in exercises.split("|||") if e.strip()] if exercises else []
+    result = await parse_voice_set(text, ex_list)
+    return {
+        "transcript": text,
+        "exercise": result.get("exercise"),
+        "weight": result.get("weight"),
+        "reps": result.get("reps"),
+        "rpe": result.get("rpe"),
+        "error": result.get("error"),
+    }
+
+
 @app.get("/api/nutrition")
 async def nutrition_today(x_init_data: str = Header(alias="x-init-data")):
     user_id = validate_init_data(x_init_data)
@@ -931,6 +972,7 @@ async def progress_endpoint(x_init_data: str = Header(alias="x-init-data")):
         })
 
     exercises = await get_user_exercises(user_id)
+    plateaus = await get_plateau_exercises(user_id)
 
     return {
         "tonnage_weeks": tonnage_weeks,
@@ -958,6 +1000,7 @@ async def progress_endpoint(x_init_data: str = Header(alias="x-init-data")):
             "fat": user.get("goal_fat") or 80,
         },
         "exercises": exercises,
+        "plateaus": plateaus,
     }
 
 
@@ -1170,6 +1213,21 @@ async def profile_get(x_init_data: str = Header(alias="x-init-data")):
         "notif_evening": bool(user.get("notif_evening", 0)),
         "press_analysis_enabled": bool(user.get("press_analysis_enabled", 0)),
         "created_at": user.get("created_at", ""),
+        "notify_pr": bool(user.get("notify_pr", 1)),
+        "notify_streak": bool(user.get("notify_streak", 1)),
+        "notify_plateau": bool(user.get("notify_plateau", 1)),
+        "notify_weekly_report": bool(user.get("notify_weekly_report", 1)),
+        "notify_morning_brief": bool(user.get("notify_morning_brief", 1)),
+        "morning_brief_hour": user.get("morning_brief_hour") or 8,
+        "morning_brief_minute": user.get("morning_brief_minute") or 0,
+        "brief_workout": bool(user.get("brief_workout", 1)),
+        "brief_yesterday": bool(user.get("brief_yesterday", 1)),
+        "brief_nutrient": bool(user.get("brief_nutrient", 1)),
+        "brief_food_idea": bool(user.get("brief_food_idea", 0)),
+        "brief_recovery": bool(user.get("brief_recovery", 1)),
+        "brief_week_prog": bool(user.get("brief_week_prog", 1)),
+        "brief_tip": bool(user.get("brief_tip", 1)),
+        "brief_water": bool(user.get("brief_water", 1)),
     }
 
 
@@ -1189,6 +1247,21 @@ class ProfileUpdateRequest(BaseModel):
     notif_evening: bool | None = None
     press_analysis_enabled: bool | None = None
     utc_offset: int | None = Field(default=None, ge=-12, le=14)
+    notify_pr: bool | None = None
+    notify_streak: bool | None = None
+    notify_plateau: bool | None = None
+    notify_weekly_report: bool | None = None
+    notify_morning_brief: bool | None = None
+    morning_brief_hour: int | None = Field(default=None, ge=0, le=23)
+    morning_brief_minute: int | None = Field(default=None, ge=0, le=59)
+    brief_workout: bool | None = None
+    brief_yesterday: bool | None = None
+    brief_nutrient: bool | None = None
+    brief_food_idea: bool | None = None
+    brief_recovery: bool | None = None
+    brief_week_prog: bool | None = None
+    brief_tip: bool | None = None
+    brief_water: bool | None = None
 
 
 @app.patch("/api/profile")

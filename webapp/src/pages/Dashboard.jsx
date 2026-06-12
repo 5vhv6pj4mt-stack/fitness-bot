@@ -14,27 +14,32 @@ function todayLabel() {
 function CalorieRing({ current, goal }) {
   const r = 38
   const circ = 2 * Math.PI * r
-  const pct = goal > 0 ? Math.min(current / goal, 1) : 0
+  const ratio = goal > 0 ? current / goal : 0
+  const pct = Math.min(ratio, 1)
   const offset = circ * (1 - pct)
+  const overflow = ratio > 1.1
+  const ringColor = overflow ? '#ff453a' : 'var(--blue)'
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
       <svg width="100" height="100" viewBox="0 0 100 100">
         <circle cx="50" cy="50" r={r} fill="none" stroke="var(--bg3)" strokeWidth="9" />
         <circle
           cx="50" cy="50" r={r} fill="none"
-          stroke="var(--blue)" strokeWidth="9"
+          stroke={ringColor} strokeWidth="9"
           strokeLinecap="round"
           strokeDasharray={circ}
           strokeDashoffset={offset}
           transform="rotate(-90 50 50)"
-          style={{ transition: 'stroke-dashoffset 0.5s' }}
+          style={{ transition: 'stroke-dashoffset 0.5s, stroke 0.3s' }}
         />
       </svg>
       <div style={{
         position: 'absolute', inset: 0,
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       }}>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>{Math.round(current)}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: overflow ? '#ff453a' : 'var(--text)' }}>
+          {Math.round(current)}
+        </div>
         <div style={{ fontSize: 10, color: 'var(--hint)', marginTop: 1 }}>из {goal}</div>
       </div>
     </div>
@@ -82,7 +87,7 @@ export default function Dashboard({ onGoWorkout, onGoProfile }) {
     </div>
   )
 
-  const { user, next_workout, nutrition_today, nutrition_goals, week_stats } = data
+  const { user, next_workout, nutrition_today, nutrition_goals, week_stats, streak } = data
   if (!user || !next_workout || !nutrition_today || !nutrition_goals) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', gap: 16, padding: 24 }}>
@@ -177,6 +182,33 @@ export default function Dashboard({ onGoWorkout, onGoProfile }) {
           💪 Начать тренировку
         </button>
       </div>
+
+      {/* Streak */}
+      {streak && streak.current > 0 && (
+        <div className="card" style={{ marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 28 }}>
+                {streak.current >= 10 ? '🔥' : streak.current >= 5 ? '⚡' : '💪'}
+              </span>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>
+                  {streak.current} {streak.current === 1 ? 'тренировка' : streak.current < 5 ? 'тренировки' : 'тренировок'} подряд
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 1 }}>
+                  Серия не прерывается
+                </div>
+              </div>
+            </div>
+            {streak.longest > 1 && (
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 11, color: 'var(--hint)' }}>Рекорд</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--orange)' }}>{streak.longest}</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Week stats */}
       {week_stats && week_stats.tonnage > 0 && (

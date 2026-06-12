@@ -6,19 +6,107 @@ import ExerciseProgressChart from '../components/ExerciseProgressChart'
 
 const TAB_LABELS = ['Неделя', 'Тоннаж', 'Питание', 'Веса', 'Тело', 'Мышцы']
 
-function WorkoutSheet({ workout, onClose, onSetDeleted }) {
-  const [sets, setSets] = useState(workout.sets || [])
-  const [deleting, setDeleting] = useState(null)
+function SetRow({ s, onDeleted, onUpdated }) {
+  const [editing, setEditing] = useState(false)
+  const [weight, setWeight] = useState(String(s.actual_weight))
+  const [reps, setReps] = useState(String(s.reps))
+  const [rpe, setRpe] = useState(String(s.rpe || 8))
+  const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
-  const handleDelete = async (setId) => {
-    setDeleting(setId)
+  const handleSave = async () => {
+    setSaving(true)
     try {
-      await api.deleteSet(setId)
-      setSets(prev => prev.filter(s => s.id !== setId))
-      onSetDeleted()
+      await api.updateSet(s.id, {
+        actual_weight: parseFloat(weight) || 0,
+        reps: parseInt(reps) || 1,
+        rpe: parseFloat(rpe) || 8,
+        notes: s.notes || null,
+      })
+      onUpdated({ ...s, actual_weight: parseFloat(weight) || 0, reps: parseInt(reps) || 1, rpe: parseFloat(rpe) || 8 })
+      setEditing(false)
     } catch (e) {
       alert('Ошибка: ' + e.message)
-    } finally { setDeleting(null) }
+    } finally { setSaving(false) }
+  }
+
+  const handleDelete = async () => {
+    setDeleting(true)
+    try {
+      await api.deleteSet(s.id)
+      onDeleted(s.id)
+    } catch (e) {
+      alert('Ошибка: ' + e.message)
+      setDeleting(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <div style={{ padding: '8px 0', borderBottom: '1px solid var(--sep)' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          {[
+            { label: 'Вес кг', val: weight, set: setWeight, type: 'decimal' },
+            { label: 'Повторы', val: reps, set: setReps, type: 'numeric' },
+            { label: 'RPE', val: rpe, set: setRpe, type: 'decimal' },
+          ].map(({ label, val, set, type }) => (
+            <div key={label} style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: 'var(--hint)', marginBottom: 3 }}>{label}</div>
+              <input
+                type="number" inputMode={type} value={val}
+                onChange={e => set(e.target.value)}
+                style={{
+                  width: '100%', background: 'var(--bg)', color: 'var(--text)',
+                  border: '1.5px solid var(--blue)', borderRadius: 8,
+                  padding: '7px 8px', fontSize: 15, fontWeight: 600,
+                  textAlign: 'center', boxSizing: 'border-box',
+                }}
+              />
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => setEditing(false)}
+            style={{ flex: 1, background: 'var(--bg3)', border: 'none', borderRadius: 8, padding: '8px', fontSize: 13, color: 'var(--hint)', cursor: 'pointer' }}>
+            Отмена
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            style={{ flex: 2, background: 'var(--blue)', border: 'none', borderRadius: 8, padding: '8px', fontSize: 13, fontWeight: 700, color: '#fff', cursor: 'pointer' }}>
+            {saving ? 'Сохраняю...' : 'Сохранить'}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0' }}>
+      <div onClick={() => setEditing(true)} style={{ flex: 1, cursor: 'pointer' }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>
+          {s.actual_weight > 0 ? `${s.actual_weight}кг × ${s.reps}` : `${s.reps} повт.`}
+        </span>
+        {s.rpe ? <span style={{ color: 'var(--hint)', fontSize: 12, marginLeft: 8 }}>RPE {s.rpe}</span> : null}
+        <span style={{ fontSize: 11, color: 'var(--blue)', marginLeft: 8 }}>✎</span>
+      </div>
+      <button onClick={handleDelete} disabled={deleting}
+        style={{ background: 'rgba(255,69,58,.12)', border: 'none', borderRadius: 8, padding: '4px 10px', color: 'var(--red)', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>
+        {deleting ? '...' : '✕'}
+      </button>
+    </div>
+  )
+}
+
+function WorkoutSheet({ workout, onClose, onSetDeleted }) {
+  const [sets, setSets] = useState(workout.sets || [])
+
+  const handleDeleted = (setId) => {
+    setSets(prev => prev.filter(s => s.id !== setId))
+    onSetDeleted()
+  }
+
+  const handleUpdated = (updated) => {
+    setSets(prev => prev.map(s => s.id === updated.id ? updated : s))
+    onSetDeleted() // обновляем тоннаж в списке
   }
 
   const grouped = sets.reduce((acc, s) => {
@@ -33,7 +121,7 @@ function WorkoutSheet({ workout, onClose, onSetDeleted }) {
       <div style={{
         position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 201,
         background: 'var(--bg2)', borderRadius: '20px 20px 0 0',
-        padding: '16px 0 32px', maxHeight: '70vh', overflowY: 'auto',
+        padding: '16px 0 32px', maxHeight: '75vh', overflowY: 'auto',
       }}>
         <div style={{ width: 36, height: 4, background: 'var(--bg4)', borderRadius: 2, margin: '0 auto 12px' }} />
         <div style={{ padding: '0 16px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -46,22 +134,10 @@ function WorkoutSheet({ workout, onClose, onSetDeleted }) {
         {sets.length === 0 ? (
           <div style={{ textAlign: 'center', color: 'var(--hint)', padding: '20px 0' }}>Все подходы удалены</div>
         ) : Object.entries(grouped).map(([exercise, exSets]) => (
-          <div key={exercise} style={{ padding: '8px 16px', borderTop: '1px solid var(--sep)' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--hint)', marginBottom: 6 }}>{exercise}</div>
+          <div key={exercise} style={{ padding: '4px 16px 4px', borderTop: '1px solid var(--sep)' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--hint)', marginBottom: 2, paddingTop: 6 }}>{exercise}</div>
             {exSets.map((s) => (
-              <div key={s.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 0' }}>
-                <div style={{ fontSize: 14 }}>
-                  <span style={{ fontWeight: 600 }}>{s.actual_weight > 0 ? `${s.actual_weight}кг × ${s.reps}` : `${s.reps} повт.`}</span>
-                  {s.rpe ? <span style={{ color: 'var(--hint)', fontSize: 12, marginLeft: 8 }}>RPE {s.rpe}</span> : null}
-                </div>
-                <button
-                  onClick={() => handleDelete(s.id)}
-                  disabled={deleting === s.id}
-                  style={{ background: 'rgba(255,69,58,.12)', border: 'none', borderRadius: 8, padding: '4px 10px', color: 'var(--red)', fontSize: 13, cursor: 'pointer' }}
-                >
-                  {deleting === s.id ? '...' : '✕'}
-                </button>
-              </div>
+              <SetRow key={s.id} s={s} onDeleted={handleDeleted} onUpdated={handleUpdated} />
             ))}
           </div>
         ))}
@@ -100,6 +176,9 @@ function WeekTab() {
   const DAY_NAMES = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
   const today = new Date()
   const weekDayIdx = (today.getDay() + 6) % 7
+  const weekStart = new Date(today)
+  weekStart.setDate(today.getDate() - weekDayIdx)
+  weekStart.setHours(0, 0, 0, 0)
 
   return (
     <>
@@ -129,30 +208,37 @@ function WeekTab() {
           })}
         </div>
 
-        {workouts.length > 0 ? workouts.map((w, i) => {
-          const detail = recentWorkouts.find(r => r.date === w.date && r.day_type === w.day_type)
+        {recentWorkouts.length > 0 ? recentWorkouts.map((w, i) => {
+          const isThisWeek = new Date(w.date) >= weekStart
           return (
-            <div key={i}
-              onClick={() => detail && setSelectedWorkout(detail)}
+            <div key={w.id}
+              onClick={() => setSelectedWorkout(w)}
               style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '8px 0', borderBottom: i < workouts.length - 1 ? '1px solid var(--sep)' : 'none',
-                cursor: detail ? 'pointer' : 'default' }}>
+                padding: '8px 0', borderBottom: i < recentWorkouts.length - 1 ? '1px solid var(--sep)' : 'none',
+                cursor: 'pointer' }}>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{w.day_type}</div>
-                <div style={{ fontSize: 11, color: 'var(--hint)' }}>{w.date.slice(5).replace('-', '/')}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{w.day_type}</span>
+                  {isThisWeek && (
+                    <span style={{ fontSize: 10, background: 'var(--green)', color: '#fff', borderRadius: 4, padding: '1px 5px', fontWeight: 700 }}>
+                      эта нед.
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--hint)' }}>{w.date} · {w.week_type}</div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: 13, fontWeight: 600 }}>{w.tonnage.toLocaleString()} кг</div>
-                  {w.rpe && <div style={{ fontSize: 11, color: 'var(--hint)' }}>RPE {w.rpe}</div>}
+                  {w.avg_rpe > 0 && <div style={{ fontSize: 11, color: 'var(--hint)' }}>RPE {w.avg_rpe}</div>}
                 </div>
-                {detail && <span style={{ color: 'var(--hint)', fontSize: 16 }}>›</span>}
+                <span style={{ color: 'var(--hint)', fontSize: 16 }}>›</span>
               </div>
             </div>
           )
         }) : (
           <div style={{ color: 'var(--hint)', fontSize: 13, textAlign: 'center', padding: '8px 0' }}>
-            Тренировок на этой неделе ещё нет
+            Тренировок ещё нет
           </div>
         )}
       </div>
@@ -182,34 +268,6 @@ function WeekTab() {
           </div>
         )}
       </div>
-
-      {/* История тренировок */}
-      {recentWorkouts.length > 0 && (
-        <div className="card">
-          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>📋 История тренировок</div>
-          {recentWorkouts.map((w, i) => (
-            <div key={w.id}
-              onClick={() => setSelectedWorkout(w)}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '10px 0', cursor: 'pointer',
-                borderTop: i > 0 ? '1px solid var(--sep)' : 'none',
-              }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{w.day_type}</div>
-                <div style={{ fontSize: 11, color: 'var(--hint)' }}>{w.date} · {w.week_type}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: 13, fontWeight: 600 }}>{w.tonnage.toLocaleString()} кг</div>
-                  {w.avg_rpe > 0 && <div style={{ fontSize: 11, color: 'var(--hint)' }}>RPE {w.avg_rpe}</div>}
-                </div>
-                <span style={{ color: 'var(--hint)', fontSize: 18 }}>›</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {/* Питание */}
       <div className="card">
@@ -283,7 +341,7 @@ const WeightTooltip = memo(({ active, payload }) => {
 })
 
 function TonnageTab({ data }) {
-  const { tonnage_weeks, stats, exercise_prs } = data
+  const { tonnage_weeks, stats, exercise_prs, plateaus = [] } = data
   const currentTonnage = tonnage_weeks[tonnage_weeks.length - 1]?.tonnage || 0
   const prevTonnage = tonnage_weeks[tonnage_weeks.length - 2]?.tonnage || 0
   const delta = currentTonnage - prevTonnage
@@ -371,6 +429,36 @@ function TonnageTab({ data }) {
               onClose={() => setChartEx(null)}
             />
           )}
+        </div>
+      )}
+
+      {plateaus.length > 0 && (
+        <div className="card" style={{ border: '1px solid rgba(255,159,10,0.3)', background: 'rgba(255,159,10,0.06)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span style={{ fontSize: 18 }}>⚠️</span>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>Плато</div>
+            <span style={{ fontSize: 11, color: 'var(--orange)', background: 'rgba(255,159,10,0.15)', padding: '2px 8px', borderRadius: 10, fontWeight: 600 }}>
+              {plateaus.length} упр.
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--hint)', marginBottom: 10, lineHeight: 1.4 }}>
+            Одинаковый вес 3+ тренировки подряд. Попробуй увеличить на 2.5–5 кг.
+          </div>
+          {plateaus.map((p, i) => (
+            <div key={i} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '8px 0',
+              borderTop: i > 0 ? '1px solid var(--sep)' : 'none',
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>{p.exercise}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13, color: 'var(--hint)' }}>{p.weight} кг · {p.sessions} сес.</span>
+                {p.avg_rpe > 0 && (
+                  <span style={{ fontSize: 11, color: 'var(--orange)', fontWeight: 600 }}>RPE {p.avg_rpe.toFixed(1)}</span>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </>
