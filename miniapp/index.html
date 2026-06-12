@@ -5,10 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Стать — фитнес</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script type="module" crossorigin src="/fitness/assets/index-X5p04hne.js"></script>
-    <link rel="stylesheet" crossorigin href="/fitness/assets/index-kd6AzB86.css">
+    <script>
+      (function() {
+        var attempts = 0;
+        function initWebApp() {
+          attempts++;
+          if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+          } else if (attempts < 5) {
+            setTimeout(initWebApp, 200 * attempts);
+          }
+        }
+        initWebApp();
+      })();
+    </script>
+    <script type="module" crossorigin src="/fitness/assets/index-BvBVGjXY.js"></script>
+    <link rel="stylesheet" crossorigin href="/fitness/assets/index-CaT1fDfl.css">
   <link rel="manifest" href="/fitness/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/fitness/registerSW.js"></script></head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="splash" style="display:flex;align-items:center;justify-content:center;height:100vh;background:#1c1c1e;color:#8e8e93;font-family:sans-serif;font-size:14px">
+        Загрузка...
+      </div>
+    </div>
   </body>
 </html>

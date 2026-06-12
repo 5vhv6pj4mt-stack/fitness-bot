@@ -110,29 +110,55 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
   const [voicePreview, setVoicePreview] = useState(null) // {transcript, weight, reps, rpe, error}
   const mediaRef = useRef(null)
   const chunksRef = useRef([])
-  const streamRef = useRef(null)
+  const streamRef = useRef(null) // kept alive between recordings to avoid repeated permission prompts
 
+  // Detect best supported MIME type once
+  const _getMimeType = () => {
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4',
+    ]
+    for (const t of candidates) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) return t
+    }
+    return ''
+  }
+  const mimeTypeRef = useRef(null)
+
+  // Release stream only on unmount
   useEffect(() => () => {
-    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop())
-    if (mediaRef.current?.state !== 'inactive') mediaRef.current?.stop()
+    if (mediaRef.current && mediaRef.current.state !== 'inactive') {
+      try { mediaRef.current.stop() } catch {}
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop())
+      streamRef.current = null
+    }
   }, [])
 
   const startVoice = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      streamRef.current = stream
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
-      const mr = new MediaRecorder(stream, { mimeType })
+      // Reuse existing stream — avoids repeated permission prompts
+      if (!streamRef.current || streamRef.current.getTracks().every(t => t.readyState === 'ended')) {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true })
+      }
+      const stream = streamRef.current
+      if (!mimeTypeRef.current) mimeTypeRef.current = _getMimeType()
+      const mimeType = mimeTypeRef.current
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : {})
       chunksRef.current = []
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data) }
       mr.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop())
-        streamRef.current = null
+        // Do NOT stop stream tracks here — keep stream alive for next recording
         setVoiceState('processing')
         try {
-          const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+          const blob = new Blob(chunksRef.current, { type: mimeType || 'audio/webm' })
+          if (blob.size === 0) { setVoicePreview({ error: 'server' }); setVoiceState('idle'); return }
+          const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm'
           const fd = new FormData()
-          fd.append('file', blob, 'voice.webm')
+          fd.append('file', blob, `voice.${ext}`)
           fd.append('exercises', allExercises.join('|||'))
           const res = await api.logWorkoutVoice(fd)
           setVoicePreview(res)
@@ -144,7 +170,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
           setVoiceState('idle')
         }
       }
-      mr.start()
+      mr.start(500) // timeslice=500ms — data chunks every 0.5s, stop() always has data
       mediaRef.current = mr
       setVoiceState('recording')
       haptic('medium')
@@ -153,7 +179,13 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
     }
   }
 
-  const stopVoice = () => { mediaRef.current?.stop() }
+  const stopVoice = () => {
+    const mr = mediaRef.current
+    if (!mr || mr.state === 'inactive') return
+    // requestData() ensures last chunk is flushed before stop on all platforms
+    try { mr.requestData() } catch {}
+    mr.stop()
+  }
 
   const applyVoice = () => {
     if (!voicePreview) return
