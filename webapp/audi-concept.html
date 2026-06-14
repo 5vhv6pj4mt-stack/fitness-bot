@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>FITNESS SYSTEM — Audi Concept</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800&display=swap');
+
+  :root {
+    --bg:          #090909;
+    --bg1:         #0f0f12;
+    --bg2:         #161619;
+    --bg3:         #1e1e23;
+    --border:      #252529;
+    --border2:     #303036;
+    --silver:      #7a7a88;
+    --silver2:     #9898a8;
+    --white:       #e2e2ea;
+    --white2:      #f5f5fa;
+    --accent:      #bb0a1e;
+    --accent2:     #d40f23;
+    --accent-dim:  rgba(187,10,30,.12);
+    --green:       #28cd41;
+    --green-dim:   rgba(40,205,65,.1);
+    --gold:        #f5c300;
+    --gold-dim:    rgba(245,195,0,.1);
+    --blue:        #0a84ff;
+    --blue-dim:    rgba(10,132,255,.1);
+    --orange:      #ff9f0a;
+    --r:           3px;
+    --r2:          6px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: #050507;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100vh;
+    padding: 32px 16px 64px;
+    color: var(--white);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Phone frame ─────────────────────────────────────────────────── */
+  .phone {
+    width: 390px;
+    height: 844px;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 44px;
+    overflow: hidden;
+    position: relative;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.04),
+      0 40px 80px rgba(0,0,0,.8),
+      0 0 120px rgba(187,10,30,.06);
+  }
+
+  /* Notch */
+  .phone::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 120px; height: 36px;
+    background: var(--bg);
+    border-radius: 0 0 20px 20px;
+    z-index: 100;
+  }
+
+  /* ── Screens ─────────────────────────────────────────────────────── */
+  .screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .28s cubic-bezier(.4,0,.2,1);
+    overflow: hidden;
+  }
+  .screen.active { opacity: 1; pointer-events: all; }
+
+  /* ── Status bar ──────────────────────────────────────────────────── */
+  .statusbar {
+    padding: 14px 24px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--silver2);
+    flex-shrink: 0;
+    height: 44px;
+    letter-spacing: .02em;
+  }
+  .statusbar-right { display: flex; gap: 6px; align-items: center; }
+
+  /* ── Scrollable content ──────────────────────────────────────────── */
+  .scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 20px 100px;
+    scrollbar-width: none;
+  }
+  .scroll::-webkit-scrollbar { display: none; }
+
+  /* ── Navbar ──────────────────────────────────────────────────────── */
+  .navbar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 80px;
+    background: rgba(9,9,9,.94);
+    backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    padding-top: 10px;
+    z-index: 50;
+  }
+  .nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 6px 0;
+    transition: color .2s;
+    border: none; background: none; color: var(--silver);
+    font-family: inherit;
+  }
+  .nav-item.active { color: var(--accent); }
+  .nav-item svg { width: 22px; height: 22px; }
+  .nav-label {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+
+  /* ── Typography ──────────────────────────────────────────────────── */
+  .label {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--silver);
+  }
+  .value {
+    font-size: 32px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+    color: var(--white2);
+  }
+  .value-sm {
+    font-size: 20px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--white2);
+  }
+  .unit {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--silver);
+    margin-left: 3px;
+  }
+
+  /* ── Header strip ────────────────────────────────────────────────── */
+  .header {
+    padding: 8px 20px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .brand-name {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--silver);
+  }
+  .brand-sub {
+    font-size: 16px;
+    font-weight: 300;
+    letter-spacing: .06em;
+    color: var(--white2);
+  }
+
+  /* Audi rings */
+  .rings {
+    display: flex;
+    gap: -2px;
+  }
+  .ring {
+    width: 18px; height: 18px;
+    border: 1.5px solid var(--silver);
+    border-radius: 50%;
+    margin-left: -6px;
+    background: var(--bg);
+  }
+  .ring:first-child { margin-left: 0; }
+
+  /* ── Card ────────────────────────────────────────────────────────── */
+  .card {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 14px 16px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .card-body { padding: 12px 16px 14px; }
+  .card-divider { height: 1px; background: var(--border); }
+
+  /* ── Thin progress bar ───────────────────────────────────────────── */
+  .prog-wrap { margin-top: 10px; }
+  .prog-label {
+    display: flex; justify-content: space-between;
+    margin-bottom: 5px;
+  }
+  .prog-track {
+    height: 2px;
+    background: var(--border2);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .prog-fill {
+    height: 100%;
+    border-radius: 1px;
+    transition: width .6s ease;
+  }
+
+  /* ── Arc gauge (КБЖУ ring) ───────────────────────────────────────── */
+  .gauge-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 0 10px;
+  }
+  .gauge-svg { overflow: visible; }
+
+  /* ── Macro row ───────────────────────────────────────────────────── */
+  .macro-row {
+    display: grid;
+    grid-template-columns: repeat(4,1fr);
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .macro-item {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 10px 4px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+  }
+  .macro-val {
+    font-size: 17px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--white2);
+  }
+  .macro-lbl { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--silver); }
+
+  /* ── Workout today card ──────────────────────────────────────────── */
+  .workout-today {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 16px;
+    margin-bottom: 10px;
+    position: relative;
+    overflow: hidden;
+  }
+  .workout-today::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--accent);
+  }
+  .wt-week { font-size: 9px; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .wt-day  { font-size: 22px; font-weight: 300; letter-spacing: .04em; color: var(--white2); margin-top: 2px; }
+  .wt-exs  { font-size: 12px; color: var(--silver); margin-top: 6px; }
+
+  .btn-primary {
+    width: 100%;
+    padding: 16px;
+    background: var(--accent);
+    color: #fff;
+    border: none; border-radius: var(--r);
+    font-family: inherit;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background .2s, transform .1s;
+    margin-top: 4px;
+  }
+  .btn-primary:active { transform: scale(.98); background: var(--accent2); }
+
+  .btn-ghost {
+    width: 100%;
+    padding: 14px;
+    background: transparent;
+    color: var(--silver2);
+    border: 1px solid var(--border2); border-radius: var(--r);
+    font-family: inherit;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: border-color .2s, color .2s;
+    margin-top: 8px;
+  }
+  .btn-ghost:active { border-color: var(--silver2); color: var(--white); }
+
+  /* ── Streak strip ────────────────────────────────────────────────── */
+  .streak-strip {
+    display: flex; gap: 8px; margin-bottom: 10px;
+  }
+  .streak-item {
+    flex: 1;
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 12px 14px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .streak-icon { font-size: 18px; }
+  .streak-num { font-size: 20px; font-weight: 700; color: var(--white2); }
+  .streak-lbl { font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--silver); }
+
+  /* ── Section title ───────────────────────────────────────────────── */
+  .section-title {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--silver);
+    padding: 16px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Exercise row (workout screen) ──────────────────────────────── */
+  .ex-row {
+    display: flex; align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .ex-row:last-child { border-bottom: none; }
+  .ex-num {
+    width: 24px; height: 24px;
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; color: var(--silver);
+    flex-shrink: 0;
+  }
+  .ex-name { flex: 1; font-size: 13px; font-weight: 500; color: var(--white); }
+  .ex-sets { font-size: 11px; color: var(--silver); }
+  .ex-done .ex-num { border-color: var(--green); color: var(--green); }
+  .ex-done .ex-name { color: var(--silver2); }
+  .ex-current .ex-num { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .ex-current .ex-name { color: var(--white2); font-weight: 600; }
+
+  /* ── Set input area ──────────────────────────────────────────────── */
+  .set-input-card {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .set-head {
+    background: var(--bg2);
+    padding: 10px 16px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .set-title { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--white); }
+  .set-rpe-badge {
+    font-size: 10px; font-weight: 700; letter-spacing: .06em;
+    padding: 3px 8px;
+    background: var(--accent-dim);
+    border: 1px solid rgba(187,10,30,.3);
+    border-radius: 2px; color: var(--accent);
+  }
+  .set-controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+  }
+  .set-ctrl {
+    background: var(--bg1);
+    padding: 16px;
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+  }
+  .set-ctrl-val {
+    font-size: 36px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em; color: var(--white2);
+    display: flex; align-items: flex-end; gap: 4px;
+  }
+  .set-ctrl-unit { font-size: 14px; font-weight: 400; color: var(--silver); margin-bottom: 5px; }
+  .set-ctrl-btns { display: flex; gap: 8px; margin-top: 4px; }
+  .set-ctrl-btn {
+    width: 36px; height: 36px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 2px; color: var(--silver2);
+    font-size: 18px; font-weight: 300;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all .15s;
+    font-family: inherit;
+  }
+  .set-ctrl-btn:active { background: var(--border2); color: var(--white); }
+
+  /* previous hint */
+  .prev-hint {
+    padding: 8px 16px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    font-size: 11px; color: var(--silver);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .prev-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--blue); flex-shrink: 0; }
+
+  /* RPE pills */
+  .rpe-row {
+    display: flex; gap: 4px;
+    padding: 12px 16px;
+    background: var(--bg1);
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .rpe-row::-webkit-scrollbar { display: none; }
+  .rpe-pill {
+    padding: 6px 12px;
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    font-size: 11px; font-weight: 600; color: var(--silver2);
+    cursor: pointer; flex-shrink: 0;
+    transition: all .15s; background: var(--bg2);
+  }
+  .rpe-pill.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+  /* rest timer */
+  .rest-bar {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .rest-time { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--orange); }
+  .rest-lbl  { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--silver); margin-top: 1px; }
+  .rest-skip { font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--silver); border: 1px solid var(--border2); background: none; border-radius: 2px; padding: 6px 12px; cursor: pointer; font-family: inherit; }
+
+  /* set log */
+  .set-log { padding: 0 16px 4px; }
+  .set-log-row {
+    display: flex; align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+    font-size: 12px;
+  }
+  .set-log-row:last-child { border-bottom: none; }
+  .set-log-n { color: var(--silver); width: 20px; flex-shrink: 0; }
+  .set-log-weight { color: var(--white2); font-weight: 600; font-variant-numeric: tabular-nums; flex: 1; }
+  .set-log-rpe { color: var(--silver); font-size: 11px; }
+  .set-log-done { color: var(--green); font-size: 10px; }
+
+  /* ── Nutrition screen ────────────────────────────────────────────── */
+  .meal-item {
+    display: flex; align-items: center;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .meal-item:last-child { border-bottom: none; }
+  .meal-type-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  }
+  .meal-desc { flex: 1; }
+  .meal-name { font-size: 13px; font-weight: 500; color: var(--white); }
+  .meal-time { font-size: 10px; letter-spacing: .04em; color: var(--silver); margin-top: 2px; }
+  .meal-kcal { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--white2); }
+
+  .add-food-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 16px;
+    background: var(--bg2);
+    border: 1px dashed var(--border2);
+    border-radius: var(--r);
+    color: var(--silver2);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: .14em; text-transform: uppercase;
+    cursor: pointer; margin-bottom: 10px;
+    font-family: inherit; width: 100%;
+    transition: border-color .2s, color .2s;
+  }
+  .add-food-btn:hover { border-color: var(--silver); color: var(--white); }
+
+  /* ── Progress screen ─────────────────────────────────────────────── */
+  .chart-wrap {
+    padding: 10px 0 4px;
+    position: relative;
+  }
+  .chart-svg { width: 100%; overflow: visible; }
+
+  .pr-row {
+    display: flex; align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+  }
+  .pr-row:last-child { border-bottom: none; }
+  .pr-medal { font-size: 14px; width: 20px; text-align: center; flex-shrink: 0; }
+  .pr-ex { flex: 1; font-size: 12px; color: var(--white); font-weight: 500; }
+  .pr-val { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--white2); }
+  .pr-date { font-size: 10px; color: var(--silver); margin-top: 1px; text-align: right; }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .stat-item {
+    background: var(--bg1);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 14px;
+  }
+  .stat-val { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--white2); }
+  .stat-lbl { font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--silver); margin-top: 3px; }
+  .stat-delta { font-size: 11px; color: var(--green); margin-top: 4px; font-weight: 600; }
+
+  /* ── Tooltip (chart) ─────────────────────────────────────────────── */
+  .chart-tooltip {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: var(--r);
+    padding: 6px 10px;
+    font-size: 11px;
+    color: var(--white2);
+    position: absolute;
+    pointer-events: none;
+    white-space: nowrap;
+    display: none;
+  }
+
+  /* ── Week selector ───────────────────────────────────────────────── */
+  .week-pills {
+    display: flex; gap: 4px; margin-bottom: 12px;
+  }
+  .week-pill {
+    flex: 1; padding: 8px;
+    text-align: center;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase;
+    border: 1px solid var(--border);
+    border-radius: 2px; color: var(--silver); cursor: pointer;
+    background: var(--bg1);
+  }
+  .week-pill.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+  /* ── Overtraining warning ────────────────────────────────────────── */
+  .ot-warn {
+    background: rgba(255,159,10,.07);
+    border: 1px solid rgba(255,159,10,.25);
+    border-radius: var(--r);
+    padding: 12px 14px;
+    display: flex; gap: 10px; align-items: flex-start;
+    margin-bottom: 10px;
+  }
+  .ot-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  .ot-text { font-size: 12px; color: var(--orange); line-height: 1.5; }
+
+  /* ── Mini line sep ───────────────────────────────────────────────── */
+  .hsep { height: 1px; background: var(--border); margin: 4px 0; }
+
+  /* ── scrollbar for page ──────────────────────────────────────────── */
+  html { scrollbar-width: thin; scrollbar-color: #2a2a32 #050507; }
+
+  /* ── Pulse animation ─────────────────────────────────────────────── */
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(187,10,30,.4); }
+    70%  { box-shadow: 0 0 0 8px rgba(187,10,30,0); }
+    100% { box-shadow: 0 0 0 0 rgba(187,10,30,0); }
+  }
+  .recording-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    animation: pulse-ring 1.2s infinite;
+    display: inline-block;
+  }
+
+  /* page bg accent */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse 600px 400px at 50% 0%, rgba(187,10,30,.05), transparent);
+    z-index: -1;
+  }
+
+  /* ── Header meta ─────────────────────────────────────────────────── */
+  .page-meta {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .page-meta-title {
+    font-size: 11px; letter-spacing: .22em; text-transform: uppercase;
+    color: var(--silver); font-weight: 500;
+  }
+  .page-meta-sub {
+    font-size: 13px; color: rgba(255,255,255,.2); margin-top: 4px;
+  }
+
+  /* ── Top tabs (progress) ─────────────────────────────────────────── */
+  .top-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+  .top-tab {
+    flex: 1; padding: 14px 8px;
+    text-align: center;
+    font-size: 10px; font-weight: 600;
+    letter-spacing: .12em; text-transform: uppercase;
+    color: var(--silver); cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color .2s, border-color .2s;
+    background: none; border-top: none; border-left: none; border-right: none;
+    font-family: inherit;
+  }
+  .top-tab.active { color: var(--white); border-bottom-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="page-meta">
+  <div class="page-meta-title">FITNESS SYSTEM — Audi Concept</div>
+  <div class="page-meta-sub">Interactive prototype · 4 screens</div>
+</div>
+
+<div class="phone" id="app">
+
+  <!-- ═══════════════════════════════════════════════════════ DASHBOARD -->
+  <div class="screen active" id="s-home">
+    <div class="statusbar">
+      <span>09:41</span>
+      <div class="statusbar-right">
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor">
+          <rect x="0" y="3" width="3" height="9" rx="1"/>
+          <rect x="4.5" y="2" width="3" height="10" rx="1"/>
+          <rect x="9" y="0" width="3" height="12" rx="1"/>
+          <rect x="13.5" y="0" width="2.5" height="12" rx="1" opacity=".3"/>
+        </svg>
+        <svg width="15" height="12" viewBox="0 0 15 12" fill="currentColor">
+          <path d="M7.5 2.5C9.8 2.5 11.9 3.4 13.4 4.9L14.8 3.5C12.9 1.6 10.3.5 7.5.5S2.1 1.6.2 3.5L1.6 4.9C3.1 3.4 5.2 2.5 7.5 2.5Z" opacity=".3"/>
+          <path d="M7.5 5.5C9 5.5 10.4 6.1 11.4 7.1L12.8 5.7C11.4 4.3 9.5 3.5 7.5 3.5S3.6 4.3 2.2 5.7L3.6 7.1C4.6 6.1 6 5.5 7.5 5.5Z"/>
+          <circle cx="7.5" cy="10" r="2"/>
+        </svg>
+        <svg width="25" height="12" viewBox="0 0 25 12" fill="none">
+          <rect x=".5" y=".5" width="21" height="11" rx="3.5" stroke="currentColor" opacity=".35"/>
+          <rect x="2" y="2" width="16" height="8" rx="2" fill="currentColor"/>
+          <path d="M23 4.5v3a2 2 0 0 0 0-3Z" fill="currentColor" opacity=".4"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="header">
+      <div class="brand">
+        <span class="brand-name">FITNESS SYSTEM</span>
+        <span class="brand-sub">Суббота, 14 июня</span>
+      </div>
+      <div class="rings">
+        <div class="ring"></div><div class="ring"></div>
+        <div class="ring"></div><div class="ring"></div>
+      </div>
+    </div>
+
+    <div class="scroll">
+
+      <!-- КБЖУ Gauge -->
+      <div class="card" style="margin-top:12px;">
+        <div class="card-header">
+          <span class="label">Питание сегодня</span>
+          <span class="label" style="color:var(--accent);">2 180 / 3 300 ккал</span>
+        </div>
+        <div class="gauge-wrap">
+          <svg class="gauge-svg" width="200" height="120" viewBox="0 0 200 120">
+            <defs>
+              <linearGradient id="gProtein" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#0a84ff"/>
+                <stop offset="100%" stop-color="#30a0ff"/>
+              </linearGradient>
+              <linearGradient id="gCarbs" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#f5c300"/>
+                <stop offset="100%" stop-color="#ffdc4a"/>
+              </linearGradient>
+              <linearGradient id="gFat" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#bb0a1e"/>
+                <stop offset="100%" stop-color="#e0102a"/>
+              </linearGradient>
+            </defs>
+            <!-- Background arcs -->
+            <path d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke="#1e1e23" stroke-width="8" stroke-linecap="butt"/>
+            <path d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke="#252529" stroke-width="1"/>
+            <!-- Kcal fill (66%) -->
+            <path d="M 20 110 A 80 80 0 0 1 180 110" fill="none" stroke="url(#gProtein)" stroke-width="8" stroke-linecap="butt"
+              stroke-dasharray="251.3" stroke-dashoffset="85" opacity=".9"/>
+            <!-- Center text -->
+            <text x="100" y="88" text-anchor="middle" font-family="Inter,sans-serif" font-size="28" font-weight="700" fill="#e2e2ea" letter-spacing="-1">2 180</text>
+            <text x="100" y="104" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#7a7a88" letter-spacing="2" text-transform="uppercase">ККАЛ</text>
+            <!-- tick marks -->
+            <line x1="20" y1="110" x2="28" y2="110" stroke="#252529" stroke-width="1"/>
+            <line x1="180" y1="110" x2="172" y2="110" stroke="#252529" stroke-width="1"/>
+            <line x1="100" y1="30" x2="100" y2="38" stroke="#252529" stroke-width="1"/>
+          </svg>
+        </div>
+        <div class="macro-row" style="padding:0 14px 14px;">
+          <div class="macro-item">
+            <div class="macro-val" style="color:#4a9eff;">142</div>
+            <div class="macro-lbl">Белки</div>
+            <div class="prog-track" style="width:100%;margin-top:6px;">
+              <div class="prog-fill" style="width:89%;background:#0a84ff;"></div>
+            </div>
+          </div>
+          <div class="macro-item">
+            <div class="macro-val" style="color:#f5c300;">270</div>
+            <div class="macro-lbl">Углеводы</div>
+            <div class="prog-track" style="width:100%;margin-top:6px;">
+              <div class="prog-fill" style="width:71%;background:#f5c300;"></div>
+            </div>
+          </div>
+          <div class="macro-item">
+            <div class="macro-val" style="color:#e04060;">74</div>
+            <div class="macro-lbl">Жиры</div>
+            <div class="prog-track" style="width:100%;margin-top:6px;">
+              <div class="prog-fill" style="width:82%;background:#bb0a1e;"></div>
+            </div>
+          </div>
+          <div class="macro-item">
+            <div class="macro-val" style="color:#34c759;">6</div>
+            <div class="macro-lbl">Вода</div>
+            <div class="prog-track" style="width:100%;margin-top:6px;">
+              <div class="prog-fill" style="width:75%;background:#34c759;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Streak -->
+      <div class="streak-strip">
+        <div class="streak-item">
+          <div class="streak-icon">🔥</div>
+          <div>
+            <div class="streak-num">7</div>
+            <div class="streak-lbl">Стрик</div>
+          </div>
+        </div>
+        <div class="streak-item">
+          <div class="streak-icon">🏆</div>
+          <div>
+            <div class="streak-num">3</div>
+            <div class="streak-lbl">Рекорда</div>
+          </div>
+        </div>
+        <div class="streak-item">
+          <div class="streak-icon">📈</div>
+          <div>
+            <div class="streak-num">+12%</div>
+            <div class="streak-lbl">Тоннаж</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Today workout -->
+      <div class="section-title">Тренировка</div>
+      <div class="workout-today">
+        <div class="wt-week">Разгрузочная · Неделя 21</div>
+        <div class="wt-day">Верх — Объём</div>
+        <div class="wt-exs">6 упражнений · ~60 мин · RPE 5–7</div>
+        <div style="display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;">
+          <span style="font-size:10px;padding:4px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:2px;color:var(--silver);">Жим гантелей</span>
+          <span style="font-size:10px;padding:4px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:2px;color:var(--silver);">Тяга блока</span>
+          <span style="font-size:10px;padding:4px 8px;background:var(--bg2);border:1px solid var(--border);border-radius:2px;color:var(--silver);">+4 ещё</span>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="nav('s-workout')">Начать тренировку</button>
+      <button class="btn-ghost">Пропустить день</button>
+
+    </div>
+    <div class="navbar">
+      <button class="nav-item active" onclick="nav('s-home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/></svg>
+        <span class="nav-label">Главная</span>
+      </button>
+      <button class="nav-item" onclick="nav('s-workout')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 12h12M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>
+        <span class="nav-label">Тренировка</span>
+      </button>
+      <button class="nav-item" onclick="nav('s-nutrition')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>
+        <span class="nav-label">Питание</span>
+      </button>
+      <button class="nav-item" onclick="nav('s-progress')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18l5-6 4 3 5-7 4 4"/></svg>
+        <span class="nav-label">Прогресс</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═════════════════════════════════════════════════════ WORKOUT -->
+  <div class="screen" id="s-workout">
+    <div class="statusbar">
+      <span>09:41</span>
+      <div class="statusbar-right">
+        <span style="font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.06em;">● 32:14</span>
+      </div>
+    </div>
+    <div class="header">
+      <div class="brand">
+        <span class="brand-name">Верх — Объём · Разгрузка</span>
+        <span class="brand-sub">Жим гантелей лёжа</span>
+      </div>
+      <div style="font-size:11px;color:var(--silver);text-align:right;">
+        <div style="font-weight:700;color:var(--white2);">2 / 6</div>
+        <div style="letter-spacing:.06em;">упр.</div>
+      </div>
+    </div>
+
+    <div class="scroll" style="padding-top:12px;">
+
+      <!-- Rest timer -->
+      <div class="rest-bar">
+        <div>
+          <div class="rest-time">1:42</div>
+          <div class="rest-lbl">Отдых</div>
+        </div>
+        <div style="flex:1;margin:0 16px;">
+          <div class="prog-track">
+            <div class="prog-fill" style="width:43%;background:var(--orange);"></div>
+          </div>
+        </div>
+        <button class="rest-skip">Пропустить</button>
+      </div>
+
+      <!-- Set input -->
+      <div class="set-input-card">
+        <div class="set-head">
+          <span class="set-title">Подход 3 / 4</span>
+          <span class="set-rpe-badge">RPE 5–7</span>
+        </div>
+        <div class="prev-hint">
+          <span class="prev-dot"></span>
+          <span>Прошлый раз: <b style="color:var(--white);">30кг × 12 повт.</b> RPE 7</span>
+        </div>
+        <div class="set-controls">
+          <div class="set-ctrl">
+            <span class="label">Вес</span>
+            <div class="set-ctrl-val">27<span class="set-ctrl-unit">кг</span></div>
+            <div class="set-ctrl-btns">
+              <button class="set-ctrl-btn">−</button>
+              <button class="set-ctrl-btn">+</button>
+            </div>
+          </div>
+          <div class="set-ctrl" style="border-left:1px solid var(--border);">
+            <span class="label">Повторы</span>
+            <div class="set-ctrl-val">12</div>
+            <div class="set-ctrl-btns">
+              <button class="set-ctrl-btn">−</button>
+              <button class="set-ctrl-btn">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="rpe-row">
+          <div class="rpe-pill">5</div>
+          <div class="rpe-pill">5.5</div>
+          <div class="rpe-pill">6</div>
+          <div class="rpe-pill active">6.5</div>
+          <div class="rpe-pill">7</div>
+          <div class="rpe-pill">7.5</div>
+          <div class="rpe-pill">8</div>
+        </div>
+      </div>
+
+      <button class="btn-primary">Записать подход ✓</button>
+
+      <!-- Set log -->
+      <div class="section-title" style="margin-top:8px;">История подходов</div>
+      <div class="card">
+        <div class="set-log">
+          <div class="set-log-row">
+            <span class="set-log-n">1</span>
+            <span class="set-log-weight">27кг × 12</span>
+            <span class="set-log-rpe">RPE 6</span>
+            <span class="set-log-done">✓</span>
+          </div>
+          <div class="set-log-row">
+            <span class="set-log-n">2</span>
+            <span class="set-log-weight">27кг × 12</span>
+            <span class="set-log-rpe">RPE 6.5</span>
+            <span class="set-log-done">✓</span>
+          </div>
+          <div class="set-log-row" style="opacity:.4;">
+            <span class="set-log-n">3</span>
+            <span class="set-log-weight">— × —</span>
+            <span class="set-log-rpe"></span>
+            <span class="set-log-done"></span>
+          </div>
+          <div class="set-log-row" style="opacity:.4;">
+            <span class="set-log-n">4</span>
+            <span class="set-log-weight">— × —</span>
+            <span class="set-log-rpe"></span>
+            <span class="set-log-done"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Exercise list -->
+      <div class="section-title">Программа</div>
+      <div class="card">
+        <div style="padding:0 16px;">
+          <div class="ex-row ex-done">
+            <div class="ex-num">✓</div>
+            <div class="ex-name">Подтягивания</div>
+            <div class="ex-sets" style="color:var(--green);">4 × 8</div>
+          </div>
+          <div class="ex-row ex-current">
+            <div class="ex-num">2</div>
+            <div class="ex-name">Жим гантелей лёжа</div>
+            <div class="ex-sets" style="color:var(--accent);">2 / 4</div>
+          </div>
+          <div class="ex-row">
+            <div class="ex-num">3</div>
+            <div class="ex-name">Тяга горизонтального блока</div>
+            <div class="ex-sets">4 × 12</div>
+          </div>
+          <div class="ex-row">
+            <div class="ex-num">4</div>
+            <div class="ex-name">Армейский жим</div>
+            <div class="ex-sets">3 × 10</div>
+          </div>
+          <div class="ex-row">
+            <div class="ex-num">5</div>
+            <div class="ex-name">Суперсет: Бицепс / Трицепс</div>
+            <div class="ex-sets">3 × 12</div>
+          </div>
+          <div class="ex-row">
+            <div class="ex-num">6</div>
+            <div class="ex-name">Обратная бабочка</div>
+            <div class="ex-sets">3 × 15</div>
+          </div>
+        </div>
+      </div>
+
+      <button class="btn-ghost" style="margin-top:4px;color:var(--accent);border-color:rgba(187,10,30,.3);">Завершить тренировку</button>
+    </div>
+
+    <div class="navbar">
+      <button class="nav-item" onclick="nav('s-home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/></svg>
+        <span class="nav-label">Главная</span>
+      </button>
+      <button class="nav-item active" onclick="nav('s-workout')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 12h12M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>
+        <span class="nav-label">Тренировка</span>
+      </button>
+      <button class="nav-item" onclick="nav('s-nutrition')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>
+        <span class="nav-label">Питание</span>
+      </button>
+      <button class="nav-item" onclick="nav('s-progress')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18l5-6 4 3 5-7 4 4"/></svg>
+        <span class="nav-label">Прогресс</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ NUTRITION -->
+  <div class="screen" id="s-nutrition">
+    <div class="statusbar">
+      <span>09:41</span>
+      <div class="statusbar-right">
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><rect x="0" y="3" width="3" height="9" rx="1"/><rect x="4.5" y="2" width="3" height="10" rx="1"/><rect x="9" y="0" width="3" height="12" rx="1"/></svg>
+      </div>
+    </div>
+    <div class="header">
+      <div class="brand">
+        <span class="brand-name">Питание</span>
+        <span class="brand-sub">Суббота, 14 июня</span>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:18px;font-weight:700;color:var(--white2);font-variant-numeric:tabular-nums;">2 180</div>
+        <div style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--silver);">/ 3 300 ккал</div>
+      </div>
+    </div>
+
+    <div class="scroll" style="padding-top:12px;">
+
+      <!-- Macro bars -->
+      <div class="card" style="padding:14px 16px;">
+        <div class="prog-wrap" style="margin-top:0;">
+          <div class="prog-label">
+            <span class="label">Белки</span>
+            <span style="font-size:11px;color:var(--white);font-weight:600;font-variant-numeric:tabular-nums;">142 / 160 г</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" style="width:89%;background:#0a84ff;"></div></div>
+        </div>
+        <div class="prog-wrap">
+          <div class="prog-label">
+            <span class="label">Углеводы</span>
+            <span style="font-size:11px;color:var(--white);font-weight:600;font-variant-numeric:tabular-nums;">270 / 380 г</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" style="width:71%;background:#f5c300;"></div></div>
+        </div>
+        <div class="prog-wrap">
+          <div class="prog-label">
+            <span class="label">Жиры</span>
+            <span style="font-size:11px;color:var(--white);font-weight:600;font-variant-numeric:tabular-nums;">74 / 90 г</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" style="width:82%;background:#bb0a1e;"></div></div>
+        </div>
+        <div class="prog-wrap">
+          <div class="prog-label">
+            <span class="label">Вода</span>
+            <span style="font-size:11px;color:var(--white);font-weight:600;">6 / 8 стаканов</span>
+          </div>
+          <div class="prog-track"><div class="prog-fill" style="width:75%;background:#34c759;"></div></div>
+        </div>
+      </div>
+
+      <!-- Add food -->
+      <button class="add-food-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        Добавить приём пищи
+      </button>
+
+      <!-- Meals -->
+      <div class="section-title">Дневник</div>
+
+      <!-- Breakfast -->
+      <div class="card">
+        <div style="padding:10px 16px 0;display:flex;align-items:center;gap:8px;">
+          <div style="width:6px;height:6px;border-radius:50%;background:#f5c300;flex-shrink:0;"></div>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#f5c300;">Завтрак</span>
+          <span style="font-size:9px;color:var(--silver);margin-left:auto;">08:32 · 620 ккал</span>
+        </div>
+        <div class="meal-item" style="border-top:none;">
+          <div style="width:4px;height:4px;border-radius:50%;background:var(--border2);flex-shrink:0;margin-left:14px;"></div>
+          <div class="meal-desc">
+            <div class="meal-name">Овсянка на молоке 250г</div>
+            <div class="meal-time">Б: 12г · У: 45г · Ж: 8г</div>
+          </div>
+          <div class="meal-kcal">350</div>
+        </div>
+        <div class="meal-item">
+          <div style="width:4px;height:4px;border-radius:50%;background:var(--border2);flex-shrink:0;margin-left:14px;"></div>
+          <div class="meal-desc">
+            <div class="meal-name">Яичница 3 яйца + тост</div>
+            <div class="meal-time">Б: 22г · У: 18г · Ж: 14г</div>
+          </div>
+          <div class="meal-kcal">270</div>
+        </div>
+      </div>
+
+      <!-- Lunch -->
+      <div class="card">
+        <div style="padding:10px 16px 0;display:flex;align-items:center;gap:8px;">
+          <div style="width:6px;height:6px;border-radius:50%;background:#0a84ff;flex-shrink:0;"></div>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#0a84ff;">Обед</span>
+          <span style="font-size:9px;color:var(--silver);margin-left:auto;">13:15 · 890 ккал</span>
+        </div>
+        <div class="meal-item">
+          <div style="width:4px;height:4px;border-radius:50%;background:var(--border2);flex-shrink:0;margin-left:14px;"></div>
+          <div class="meal-desc">
+            <div class="meal-name">Куриная грудка 200г</div>
+            <div class="meal-time">Б: 44г · У: 0г · Ж: 6г</div>
+          </div>
+          <div class="meal-kcal">230</div>
+        </div>
+        <div class="meal-item">
+          <div style="width:4px;height:4px;border-radius:50%;background:var(--border2);flex-shrink:0;margin-left:14px;"></div>
+          <div class="meal-desc">
+            <div class="meal-name">Гречка отварная 180г</div>
+            <div class="meal-time">Б: 9г · У: 64г · Ж: 3г</div>
+          </div>
+          <div class="meal-kcal">330</div>
+        </div>
+        <div class="meal-item">
+          <div style="width:4px;height:4px;border-radius:50%;background:var(--border2);flex-shrink:0;margin-left:14px;"></div>
+          <div class="meal-desc">
+            <div class="meal-name">Овощной салат с маслом</div>
+            <div class="meal-time">Б: 3г · У: 12г · Ж: 18г</div>
+          </div>
+          <div class="meal-kcal">220</div>
+        </div>
+      </div>
+
+      <!-- Snack -->
+      <div class="card">
+        <div style="padding:10px 16px 0;display:flex;align-items:center;gap:8px;">
+          <div style="width:6px;height:6px;border-radius:50%;background:#30d158;flex-shrink:0;"></div>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#30d158;">Перекус</span>
+          <span style="font-size:9px;color:var(--silver);margin-left:auto;">16:40 · 310 ккал</span>
+        </div>
+        <div class="meal-item">
+          <div style="width:4px;height:4px;border-radius:50%;background:var(--border2);flex-shrink:0;margin-left:14px;"></div>
+          <div class="meal-desc">
+            <div class="meal-name">Творог 5% 200г + мёд</div>
+            <div class="meal-time">Б: 22г · У: 28г · Ж: 10г</div>
+          </div>
+          <div class="meal-kcal">310</div>
+        </div>
+      </div>
+
+      <!-- Dinner placeholder -->
+      <div class="card" style="padding:16px;border-style:dashed;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--border2);flex-shrink:0;"></div>
+          <span style="font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--silver);">Ужин · ещё не записан</span>
+          <span style="font-size:9px;color:var(--accent);margin-left:auto;">−1 120 ккал</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="navbar">
+      <button class="nav-item" onclick="nav('s-home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/></svg>
+        <span class="nav-label">Главная</span>
+      </button>
+      <button class="nav-item" onclick="nav('s-workout')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 12h12M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>
+        <span class="nav-label">Тренировка</span>
+      </button>
+      <button class="nav-item active" onclick="nav('s-nutrition')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>
+        <span class="nav-label">Питание</span>
+      </button>
+      <button class="nav-item" onclick="nav('s-progress')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18l5-6 4 3 5-7 4 4"/></svg>
+        <span class="nav-label">Прогресс</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════ PROGRESS -->
+  <div class="screen" id="s-progress">
+    <div class="statusbar">
+      <span>09:41</span>
+      <div class="statusbar-right">
+        <svg width="16" height="12" viewBox="0 0 16 12" fill="currentColor"><rect x="0" y="3" width="3" height="9" rx="1"/><rect x="4.5" y="2" width="3" height="10" rx="1"/><rect x="9" y="0" width="3" height="12" rx="1"/></svg>
+      </div>
+    </div>
+    <div class="header">
+      <div class="brand">
+        <span class="brand-name">Прогресс</span>
+        <span class="brand-sub">Тоннаж и рекорды</span>
+      </div>
+    </div>
+
+    <div class="top-tabs">
+      <button class="top-tab active">Тоннаж</button>
+      <button class="top-tab">Упражнения</button>
+      <button class="top-tab">Рекорды</button>
+    </div>
+
+    <div class="scroll" style="padding-top:14px;">
+
+      <!-- Stats grid -->
+      <div class="stat-grid">
+        <div class="stat-item">
+          <div class="stat-val">48 200</div>
+          <div class="stat-lbl">Тоннаж · месяц</div>
+          <div class="stat-delta">↑ 12% vs прошлый</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">21</div>
+          <div class="stat-lbl">Тренировок</div>
+          <div class="stat-delta">↑ 3 vs прошлый</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">9 840</div>
+          <div class="stat-lbl">Лучшая неделя</div>
+          <div class="stat-delta" style="color:var(--silver);">нед. 5 июня</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val">8.1</div>
+          <div class="stat-lbl">Ср. RPE</div>
+          <div class="stat-delta" style="color:var(--orange);">↑ +0.3</div>
+        </div>
+      </div>
+
+      <!-- Chart -->
+      <div class="section-title">Тоннаж по неделям</div>
+      <div class="card" style="padding:14px 16px;">
+        <div class="chart-wrap">
+          <svg class="chart-svg" height="120" viewBox="0 0 350 120">
+            <defs>
+              <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#bb0a1e" stop-opacity=".2"/>
+                <stop offset="100%" stop-color="#bb0a1e" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <!-- grid lines -->
+            <line x1="0" y1="0"   x2="350" y2="0"   stroke="#1e1e23" stroke-width="1"/>
+            <line x1="0" y1="40"  x2="350" y2="40"  stroke="#1e1e23" stroke-width="1"/>
+            <line x1="0" y1="80"  x2="350" y2="80"  stroke="#1e1e23" stroke-width="1"/>
+            <line x1="0" y1="120" x2="350" y2="120" stroke="#252529" stroke-width="1"/>
+            <!-- y labels -->
+            <text x="0" y="4" font-family="Inter" font-size="9" fill="#7a7a88">10к</text>
+            <text x="0" y="44" font-family="Inter" font-size="9" fill="#7a7a88">7к</text>
+            <text x="0" y="84" font-family="Inter" font-size="9" fill="#7a7a88">4к</text>
+            <!-- area fill -->
+            <path d="M 30 88 L 80 72 L 130 60 L 180 44 L 230 36 L 280 24 L 330 40 L 330 120 L 30 120 Z"
+              fill="url(#chartGrad)"/>
+            <!-- line -->
+            <polyline
+              points="30,88 80,72 130,60 180,44 230,36 280,24 330,40"
+              fill="none" stroke="#bb0a1e" stroke-width="1.5" stroke-linejoin="round"/>
+            <!-- dots -->
+            <circle cx="30" cy="88" r="3" fill="#bb0a1e"/>
+            <circle cx="80" cy="72" r="3" fill="#bb0a1e"/>
+            <circle cx="130" cy="60" r="3" fill="#bb0a1e"/>
+            <circle cx="180" cy="44" r="3" fill="#bb0a1e"/>
+            <circle cx="230" cy="36" r="3" fill="#bb0a1e"/>
+            <circle cx="280" cy="24" r="4" fill="#bb0a1e" stroke="#e2e2ea" stroke-width="1.5"/>
+            <circle cx="330" cy="40" r="3" fill="#252529" stroke="#bb0a1e" stroke-width="1.5"/>
+            <!-- active tooltip -->
+            <line x1="280" y1="0" x2="280" y2="120" stroke="#2a2a32" stroke-width="1" stroke-dasharray="3,3"/>
+            <rect x="246" y="4" width="68" height="22" rx="2" fill="#1e1e23" stroke="#2a2a32" stroke-width="1"/>
+            <text x="280" y="19" font-family="Inter" font-size="11" font-weight="700" fill="#e2e2ea" text-anchor="middle">9 840 кг</text>
+            <!-- x labels -->
+            <text x="30"  y="118" font-family="Inter" font-size="9" fill="#7a7a88" text-anchor="middle">12 мая</text>
+            <text x="130" y="118" font-family="Inter" font-size="9" fill="#7a7a88" text-anchor="middle">26 мая</text>
+            <text x="230" y="118" font-family="Inter" font-size="9" fill="#7a7a88" text-anchor="middle">9 июн</text>
+            <text x="330" y="118" font-family="Inter" font-size="9" fill="#7a7a88" text-anchor="middle">тек.</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Week selector -->
+      <div class="section-title">Неделя</div>
+      <div class="week-pills">
+        <div class="week-pill">19</div>
+        <div class="week-pill">20</div>
+        <div class="week-pill active">21 · сейчас</div>
+      </div>
+
+      <!-- PRs -->
+      <div class="section-title">Личные рекорды</div>
+      <div class="card">
+        <div class="pr-row">
+          <div class="pr-medal">🥇</div>
+          <div class="pr-ex">Жим штанги наклонной</div>
+          <div>
+            <div class="pr-val" style="color:var(--gold);">90кг × 5</div>
+            <div class="pr-date">2 июня</div>
+          </div>
+        </div>
+        <div class="pr-row">
+          <div class="pr-medal">🥇</div>
+          <div class="pr-ex">Тяга штанги в наклоне</div>
+          <div>
+            <div class="pr-val" style="color:var(--gold);">95кг × 5</div>
+            <div class="pr-date">28 мая</div>
+          </div>
+        </div>
+        <div class="pr-row">
+          <div class="pr-medal">🥇</div>
+          <div class="pr-ex">Армейский жим</div>
+          <div>
+            <div class="pr-val" style="color:var(--gold);">65кг × 6</div>
+            <div class="pr-date">19 мая</div>
+          </div>
+        </div>
+        <div class="pr-row">
+          <div class="pr-medal">🏅</div>
+          <div class="pr-ex">Подтягивания с весом</div>
+          <div>
+            <div class="pr-val">+30кг × 6</div>
+            <div class="pr-date">10 июня</div>
+          </div>
+        </div>
+        <div class="pr-row">
+          <div class="pr-medal">🏅</div>
+          <div class="pr-ex">Жим гантелей лёжа</div>
+          <div>
+            <div class="pr-val">30кг × 12</div>
+            <div class="pr-date">5 июня</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="navbar">
+      <button class="nav-item" onclick="nav('s-home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/></svg>
+        <span class="nav-label">Главная</span>
+      </button>
+      <button class="nav-item" onclick="nav('s-workout')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 12h12M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>
+        <span class="nav-label">Тренировка</span>
+      </button>
+      <button class="nav-item" onclick="nav('s-nutrition')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></svg>
+        <span class="nav-label">Питание</span>
+      </button>
+      <button class="nav-item active" onclick="nav('s-progress')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 18l5-6 4 3 5-7 4 4"/></svg>
+        <span class="nav-label">Прогресс</span>
+      </button>
+    </div>
+  </div>
+
+</div><!-- /phone -->
+
+<script>
+  function nav(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'))
+    document.getElementById(id).classList.add('active')
+  }
+</script>
+
+</body>
+</html>
