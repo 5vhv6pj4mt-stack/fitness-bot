@@ -330,14 +330,19 @@ async def get_user_day_types(user_id: int, week_type: str) -> list[str]:
             return [r[0] for r in rows]
 
 
+_WEEK_TYPE_ORDER = ["strength", "volume", "deload"]
+
 async def get_user_week_types(user_id: int) -> list[str]:
+    """Возвращает типы недель в правильном порядке цикла: сила → объём → разгрузка."""
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(
             "SELECT DISTINCT week_type FROM user_program WHERE user_id=?",
             (user_id,)
         ) as cur:
             rows = await cur.fetchall()
-            return [r[0] for r in rows]
+    existing = {r[0] for r in rows}
+    # Возвращаем в фиксированном порядке цикла, не в порядке SQLite
+    return [w for w in _WEEK_TYPE_ORDER if w in existing]
 
 
 async def get_user(user_id: int) -> dict | None:
