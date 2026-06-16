@@ -93,7 +93,7 @@ function Stepper({ value, onChange, step, min = 0, fmt = (v) => v }) {
   )
 }
 
-function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRange, lastWeight, lastReps, lastRpe, suggestedWeight, restSecs, allExercises = [], weightStep = 2.5, onLog }) {
+function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRange, lastWeight, lastReps, lastRpe, suggestedWeight, allExercises = [], weightStep = 2.5, restRemaining = 0, onSkipRest, onLog }) {
   const initWeight = plannedWeight || suggestedWeight || 0
   const initReps = parseInt(String(repsRange).split('-')[0]) || 5
 
@@ -103,8 +103,6 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
-  const [restRemaining, setRestRemaining] = useState(0)
-  const restRef = useRef(null)
   const { show: showToast, ToastEl } = useToast()
 
   // Voice
@@ -198,21 +196,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
     haptic('medium')
   }
 
-  useEffect(() => () => clearInterval(restRef.current), [])
-
   const fmtRest = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
-
-  const startRest = (secs) => {
-    clearInterval(restRef.current)
-    setRestRemaining(secs)
-    restRef.current = setInterval(() => {
-      setRestRemaining((r) => {
-        if (r <= 1) { clearInterval(restRef.current); haptic('heavy'); playSound(getRestSound()); return 0 }
-        if (r === 11) haptic('light')
-        return r - 1
-      })
-    }, 1000)
-  }
 
   const submit = async () => {
     if (weight == null || weight < 0) { showToast('Укажи вес (или 0 — свой вес)', true); return }
@@ -226,7 +210,6 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
       setReps(initReps)
       setRpe('8')
       setNotes('')
-      if (restSecs > 0) startRest(restSecs)
     } catch (e) {
       haptic('error')
       showToast(friendlyError(e), true)
@@ -422,7 +405,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
             </span>
           </div>
           <button
-            onClick={() => { clearInterval(restRef.current); setRestRemaining(0) }}
+            onClick={onSkipRest}
             style={{ fontSize: 13, color: 'var(--hint)', background: 'var(--bg3)', border: 'none', borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}
           >
             пропустить
@@ -718,8 +701,29 @@ export default function Workout({ onGoProgress }) {
   const pressAnalysisEnabled = localStorage.getItem('press_analysis_enabled') === '1'
   const [prBanner, setPrBanner] = useState(null) // { exercise, type: 'weight'|'1rm' }
   const prTimerRef = useRef(null)
+  const [restRemaining, setRestRemaining] = useState(0)
+  const restIntervalRef = useRef(null)
 
   useEffect(() => { return () => clearTimeout(prTimerRef.current) }, [])
+  useEffect(() => { return () => clearInterval(restIntervalRef.current) }, [])
+
+  const startRest = useCallback((secs) => {
+    if (!secs || secs <= 0) return
+    clearInterval(restIntervalRef.current)
+    setRestRemaining(secs)
+    restIntervalRef.current = setInterval(() => {
+      setRestRemaining((r) => {
+        if (r <= 1) { clearInterval(restIntervalRef.current); haptic('heavy'); playSound(getRestSound()); return 0 }
+        if (r === 11) haptic('light')
+        return r - 1
+      })
+    }, 1000)
+  }, [])
+
+  const skipRest = useCallback(() => {
+    clearInterval(restIntervalRef.current)
+    setRestRemaining(0)
+  }, [])
 
   useEffect(() => {
     api.workoutPlan()
@@ -778,6 +782,7 @@ export default function Workout({ onGoProgress }) {
     } else {
       dispatch({ type: 'NEXT_SET' })
     }
+    startRest(ex.rest_secs || 0)
   }
 
   const doFinish = useCallback(async (sets = loggedSets) => {
@@ -879,9 +884,10 @@ export default function Workout({ onGoProgress }) {
         lastReps={ex.last_reps}
         lastRpe={ex.last_rpe}
         suggestedWeight={ex.suggested_weight}
-        restSecs={ex.rest_secs || 0}
         allExercises={exercises.map(e => e.exercise)}
         weightStep={plan.weight_step || 2.5}
+        restRemaining={restRemaining}
+        onSkipRest={skipRest}
         onLog={handleLog}
       />
 
