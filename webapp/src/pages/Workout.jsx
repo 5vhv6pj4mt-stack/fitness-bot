@@ -93,7 +93,7 @@ function Stepper({ value, onChange, step, min = 0, fmt = (v) => v }) {
   )
 }
 
-function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRange, lastWeight, lastReps, lastRpe, suggestedWeight, restSecs, allExercises = [], onLog }) {
+function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRange, lastWeight, lastReps, lastRpe, suggestedWeight, restSecs, allExercises = [], weightStep = 2.5, onLog }) {
   const initWeight = plannedWeight || suggestedWeight || 0
   const initReps = parseInt(String(repsRange).split('-')[0]) || 5
 
@@ -261,7 +261,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
       <div className="set-row-2col" style={{ marginBottom: 12 }}>
         <div>
           <div className="set-input-label">Вес, кг</div>
-          <Stepper value={weight} onChange={setWeight} step={2.5} min={0} fmt={(v) => v > 0 ? v : '—'} />
+          <Stepper value={weight} onChange={setWeight} step={weightStep} min={0} fmt={(v) => v > 0 ? v : '—'} />
         </div>
         <div>
           <div className="set-input-label">Повторы</div>
@@ -881,6 +881,7 @@ export default function Workout({ onGoProgress }) {
         suggestedWeight={ex.suggested_weight}
         restSecs={ex.rest_secs || 0}
         allExercises={exercises.map(e => e.exercise)}
+        weightStep={plan.weight_step || 2.5}
         onLog={handleLog}
       />
 

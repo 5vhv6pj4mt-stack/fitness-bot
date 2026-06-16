@@ -109,6 +109,7 @@ async def init_db():
             ("brief_tip",       "INTEGER DEFAULT 1"),
             ("brief_water",     "INTEGER DEFAULT 1"),
             ("notify_overtraining", "INTEGER DEFAULT 1"),
+            ("weight_step", "REAL DEFAULT 2.5"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")

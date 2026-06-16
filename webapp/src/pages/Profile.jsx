@@ -223,6 +223,26 @@ export default function Profile({ onBack }) {
           <div className="sr-value">{tzLabel}</div>
           <div className="sr-chevron">›</div>
         </div>
+        <div style={{ padding: '14px 16px', borderTop: '1px solid var(--sep)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+            <div className="sr-icon" style={{ background: 'rgba(255,159,10,.12)', marginRight: 12 }}>⚖️</div>
+            <div className="sr-label">Шаг веса</div>
+          </div>
+          <div style={{ paddingLeft: 44 }}>
+            <div style={{ fontSize: 12, color: 'var(--hint)', marginBottom: 6 }}>
+              Округление предложенного веса под твоё оборудование
+            </div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[1, 2, 2.5, 5, 10].map((s) => (
+                <button key={s}
+                  className={`wset-chip${(data.weight_step || 2.5) === s ? ' active' : ''}`}
+                  onClick={() => { haptic('light'); save('weight_step', s) }}>
+                  {s} кг
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
         <div className="sr" onClick={() => haptic('light')}>
           <div className="sr-icon" style={{ background: 'rgba(255,159,10,.12)' }}>🔄</div>
           <div className="sr-label">Пересоздать программу</div>

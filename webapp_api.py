@@ -121,7 +121,7 @@ def validate_init_data(init_data: str) -> int:
     return user_id
 
 
-def _suggested_weight(last_weight: float, last_rpe: float | None) -> float:
+def _suggested_weight(last_weight: float, last_rpe: float | None, step: float = 2.5) -> float:
     rpe = last_rpe or 8.0
     if rpe <= 7.0:
         factor = 1.05
@@ -132,8 +132,8 @@ def _suggested_weight(last_weight: float, last_rpe: float | None) -> float:
     else:
         factor = 0.975
     raw = last_weight * factor
-    # Round to nearest 2.5
-    return round(round(raw / 2.5) * 2.5, 1)
+    s = step if step > 0 else 2.5
+    return round(round(raw / s) * s, 2)
 
 
 def _parse_rest_secs(rest: str | None) -> int:
@@ -150,7 +150,7 @@ def _parse_rest_secs(rest: str | None) -> int:
     return s or 120
 
 
-async def enrich_exercises_with_history(user_id: int, exercises: list) -> list:
+async def enrich_exercises_with_history(user_id: int, exercises: list, weight_step: float = 2.5) -> list:
     result = []
     for ex in exercises:
         last = await get_last_exercise_set(user_id, ex["exercise"])
@@ -160,12 +160,17 @@ async def enrich_exercises_with_history(user_id: int, exercises: list) -> list:
             ex_dict["last_weight"] = last["actual_weight"]
             ex_dict["last_reps"] = last["reps"]
             ex_dict["last_rpe"] = last["rpe"]
-            ex_dict["suggested_weight"] = _suggested_weight(last["actual_weight"], last["rpe"])
+            ex_dict["suggested_weight"] = _suggested_weight(last["actual_weight"], last["rpe"], weight_step)
         else:
             ex_dict["last_weight"] = None
             ex_dict["last_reps"] = None
             ex_dict["last_rpe"] = None
-            ex_dict["suggested_weight"] = ex.get("weight") or None
+            # Round planned weight to step too
+            pw = ex.get("weight")
+            if pw and pw > 0:
+                s = weight_step if weight_step > 0 else 2.5
+                pw = round(round(pw / s) * s, 2)
+            ex_dict["suggested_weight"] = pw or None
         result.append(ex_dict)
     return result
 
@@ -266,7 +271,8 @@ async def workout_plan(x_init_data: str = Header(alias="x-init-data")):
 
     day_type, week_type, exercises = await get_current_day(user)
     active = await get_active_workout(user_id)
-    enriched = await enrich_exercises_with_history(user_id, exercises)
+    weight_step = user.get("weight_step") or 2.5
+    enriched = await enrich_exercises_with_history(user_id, exercises, weight_step)
 
     active_data = None
     if active:
@@ -291,6 +297,7 @@ async def workout_plan(x_init_data: str = Header(alias="x-init-data")):
         "week_num": user["current_week"],
         "exercises": enriched,
         "active_workout": active_data,
+        "weight_step": user.get("weight_step") or 2.5,
     }
 
 
@@ -310,9 +317,10 @@ async def start_workout(x_init_data: str = Header(alias="x-init-data")):
     if not exercises:
         raise HTTPException(status_code=400, detail="No program found")
 
-    enriched = await enrich_exercises_with_history(user_id, exercises)
+    weight_step = user.get("weight_step") or 2.5
+    enriched = await enrich_exercises_with_history(user_id, exercises, weight_step)
     workout_id = await create_workout(user_id, today(), day_type, user["current_week"], week_type)
-    return {"workout_id": workout_id, "day_type": day_type, "exercises": enriched}
+    return {"workout_id": workout_id, "day_type": day_type, "exercises": enriched, "weight_step": weight_step}
 
 
 class LogSetRequest(BaseModel):
@@ -1252,6 +1260,7 @@ async def profile_get(x_init_data: str = Header(alias="x-init-data")):
         "brief_week_prog": bool(user.get("brief_week_prog", 1)),
         "brief_tip": bool(user.get("brief_tip", 1)),
         "brief_water": bool(user.get("brief_water", 1)),
+        "weight_step": user.get("weight_step") or 2.5,
     }
 
 
@@ -1286,6 +1295,7 @@ class ProfileUpdateRequest(BaseModel):
     brief_week_prog: bool | None = None
     brief_tip: bool | None = None
     brief_water: bool | None = None
+    weight_step: float | None = Field(default=None, ge=0.5, le=20.0)
 
 
 @app.patch("/api/profile")
