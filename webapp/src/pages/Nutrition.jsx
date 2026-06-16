@@ -92,14 +92,16 @@ function FoodSheet({ entry, onClose, onDelete, onUpdate }) {
 }
 
 // ── Water strip inside dock ───────────────────────────────────────────────────
-function WaterStrip() {
+function WaterStrip({ onError }) {
   const [water, setWater] = useState(null)
 
   useEffect(() => { api.waterToday().then(setWater).catch(() => {}) }, [])
 
   const handleAdd = async () => {
     haptic('light')
-    try { const r = await api.waterAdd(); setWater(r) } catch {}
+    try { const r = await api.waterAdd(); setWater(r) } catch {
+      onError?.('Не удалось записать стакан воды')
+    }
   }
 
   if (!water || water.notif_water === false) return null
@@ -293,7 +295,7 @@ function NutritionDock({ onLogged }) {
       )}
 
       {/* Water strip */}
-      <WaterStrip />
+      <WaterStrip onError={(msg) => showToast(msg, true)} />
 
       {/* 3 NIB buttons */}
       <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={handlePhotoChange} />

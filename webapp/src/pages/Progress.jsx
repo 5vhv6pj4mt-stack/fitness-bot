@@ -1,8 +1,9 @@
 import { useEffect, useState, memo } from 'react'
 import { AreaChart, Area, BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { api } from '../api'
+import { api, friendlyError } from '../api'
 import ProgressBar from '../components/ProgressBar'
 import ExerciseProgressChart from '../components/ExerciseProgressChart'
+import { useToast } from '../useToast.jsx'
 
 const TAB_LABELS = ['Неделя', 'Тоннаж', 'Питание', 'Веса', 'Тело', 'Мышцы']
 
@@ -13,6 +14,7 @@ function SetRow({ s, onDeleted, onUpdated }) {
   const [rpe, setRpe] = useState(String(s.rpe || 8))
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const { show: showToast, ToastEl } = useToast()
 
   const handleSave = async () => {
     setSaving(true)
@@ -25,8 +27,9 @@ function SetRow({ s, onDeleted, onUpdated }) {
       })
       onUpdated({ ...s, actual_weight: parseFloat(weight) || 0, reps: parseInt(reps) || 1, rpe: parseFloat(rpe) || 8 })
       setEditing(false)
+      showToast('Изменения сохранены ✓')
     } catch (e) {
-      alert('Ошибка: ' + e.message)
+      showToast(friendlyError(e), true)
     } finally { setSaving(false) }
   }
 
@@ -36,7 +39,7 @@ function SetRow({ s, onDeleted, onUpdated }) {
       await api.deleteSet(s.id)
       onDeleted(s.id)
     } catch (e) {
-      alert('Ошибка: ' + e.message)
+      showToast(friendlyError(e), true)
       setDeleting(false)
     }
   }
@@ -92,6 +95,7 @@ function SetRow({ s, onDeleted, onUpdated }) {
         style={{ background: 'rgba(255,69,58,.12)', border: 'none', borderRadius: 8, padding: '4px 10px', color: 'var(--red)', fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>
         {deleting ? '...' : '✕'}
       </button>
+      {ToastEl}
     </div>
   )
 }
@@ -525,6 +529,7 @@ function BodyTab() {
   const [showMeasForm, setShowMeasForm] = useState(false)
   const [measInputs, setMeasInputs] = useState({ chest: '', waist: '', bicep: '', hips: '' })
   const [saving, setSaving] = useState(false)
+  const { show: showToast, ToastEl } = useToast()
 
   const load = () => {
     setLoading(true)
@@ -538,13 +543,19 @@ function BodyTab() {
 
   const saveWeight = async () => {
     const w = parseFloat(weightInput)
-    if (!w || w < 20 || w > 400) return
+    if (!w || w < 20 || w > 400) {
+      showToast('Введи вес от 20 до 400 кг', true)
+      return
+    }
     setSaving(true)
     try {
       await api.logWeight(w)
       setShowWeightForm(false)
       setWeightInput('')
       load()
+      showToast('Вес записан ✓')
+    } catch (e) {
+      showToast(friendlyError(e), true)
     } finally { setSaving(false) }
   }
 
@@ -554,13 +565,19 @@ function BodyTab() {
       const n = parseFloat(v)
       if (n > 0) payload[k] = n
     }
-    if (!Object.keys(payload).length) return
+    if (!Object.keys(payload).length) {
+      showToast('Заполни хотя бы одно поле', true)
+      return
+    }
     setSaving(true)
     try {
       await api.logMeasurements(payload)
       setShowMeasForm(false)
       setMeasInputs({ chest: '', waist: '', bicep: '', hips: '' })
       load()
+      showToast('Замеры сохранены ✓')
+    } catch (e) {
+      showToast(friendlyError(e), true)
     } finally { setSaving(false) }
   }
 
@@ -726,6 +743,7 @@ function BodyTab() {
           })}
         </div>
       </div>
+      {ToastEl}
     </>
   )
 }

@@ -3,6 +3,7 @@ import { api, friendlyError } from '../api'
 import { haptic } from '../tg'
 import { playSound, getRestSound } from '../sounds'
 import DumbbellPressAnalysis from '../components/DumbbellPressAnalysis'
+import { useToast } from '../useToast.jsx'
 
 // ── Elapsed timer ────────────────────────────────────────────────────────────
 function ElapsedTimer({ startedAt }) {
@@ -104,6 +105,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
   const [done, setDone] = useState(false)
   const [restRemaining, setRestRemaining] = useState(0)
   const restRef = useRef(null)
+  const { show: showToast, ToastEl } = useToast()
 
   // Voice
   const [voiceState, setVoiceState] = useState('idle') // idle | recording | processing
@@ -213,7 +215,8 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
   }
 
   const submit = async () => {
-    if (weight == null || weight < 0 || !reps) return
+    if (weight == null || weight < 0) { showToast('Укажи вес (или 0 — свой вес)', true); return }
+    if (!reps || reps < 1) { showToast('Укажи количество повторов', true); return }
     setLoading(true)
     haptic('medium')
     try {
@@ -226,7 +229,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
       if (restSecs > 0) startRest(restSecs)
     } catch (e) {
       haptic('error')
-      alert(friendlyError(e))
+      showToast(friendlyError(e), true)
     } finally {
       setLoading(false)
     }
@@ -426,6 +429,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
           </button>
         </div>
       )}
+      {ToastEl}
     </div>
   )
 }
@@ -524,16 +528,21 @@ function ExerciseRow({ ex, weekType, dayType, onWeightSaved }) {
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState(ex.weight || 0)
   const [saving, setSaving] = useState(false)
+  const { show: showToast, ToastEl } = useToast()
 
   const save = async () => {
     const w = parseFloat(val)
-    if (!w || w <= 0) return
+    if (!w || w <= 0) { showToast('Введи вес больше 0', true); return }
     setSaving(true)
     haptic('medium')
     try {
       await api.updateExerciseWeight(ex.exercise, weekType, dayType, w)
       onWeightSaved(ex.exercise, w)
       setEditing(false)
+      showToast('Вес сохранён ✓')
+    } catch (e) {
+      haptic('error')
+      showToast(friendlyError(e), true)
     } finally { setSaving(false) }
   }
 
@@ -584,6 +593,7 @@ function ExerciseRow({ ex, weekType, dayType, onWeightSaved }) {
           <span style={{ fontSize: 12, color: 'var(--green)' }}>→ {ex.suggested_weight}кг</span>
         )}
       </div>
+      {ToastEl}
     </div>
   )
 }
@@ -719,8 +729,13 @@ export default function Workout({ onGoProgress }) {
 
   const handleStart = async () => {
     haptic('medium')
-    const res = await api.startWorkout()
-    dispatch({ type: 'START', workoutId: res.workout_id, exercises: res.exercises })
+    try {
+      const res = await api.startWorkout()
+      dispatch({ type: 'START', workoutId: res.workout_id, exercises: res.exercises })
+    } catch (e) {
+      haptic('error')
+      dispatch({ type: 'PLAN_ERR', err: friendlyError(e) })
+    }
   }
 
   const handleLog = async ({ weight, reps, rpe, notes }) => {
