@@ -1,6 +1,6 @@
 ---
 name: scaffold-exercises
-description: Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section.
+description: Создаёт структуру директорий с упражнениями: разделы, задачи, решения и пояснения. Используй когда нужно сгенерировать заготовки упражнений или создать новый раздел курса.
 ---
 
 # Scaffold Exercises

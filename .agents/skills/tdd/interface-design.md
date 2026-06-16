@@ -1,31 +1,29 @@
-# Interface Design for Testability
+# Проектирование интерфейсов для тестируемости
 
-Good interfaces make testing natural:
+Хорошие интерфейсы делают тестирование естественным:
 
-1. **Accept dependencies, don't create them**
+**1. Принимай зависимости, не создавай их**
 
-   ```typescript
-   // Testable
-   function processOrder(order, paymentGateway) {}
+```python
+# Тестируемо
+def process_order(order, payment_gateway): ...
 
-   // Hard to test
-   function processOrder(order) {
-     const gateway = new StripeGateway();
-   }
-   ```
+# Сложно тестировать
+def process_order(order):
+    gateway = StripeGateway()  # скрытая зависимость
+```
 
-2. **Return results, don't produce side effects**
+**2. Возвращай результаты, не производи побочные эффекты**
 
-   ```typescript
-   // Testable
-   function calculateDiscount(cart): Discount {}
+```python
+# Тестируемо
+def calculate_discount(cart) -> Discount: ...
 
-   // Hard to test
-   function applyDiscount(cart): void {
-     cart.total -= discount;
-   }
-   ```
+# Сложно тестировать
+def apply_discount(cart) -> None:
+    cart.total -= discount  # мутирует состояние
+```
 
-3. **Small surface area**
-   - Fewer methods = fewer tests needed
-   - Fewer params = simpler test setup
+**3. Маленькая поверхность**
+- Меньше методов = меньше тестов нужно
+- Меньше параметров = проще настройка тестов

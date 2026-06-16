@@ -1,6 +1,6 @@
 ---
 name: edit-article
-description: Edit and improve articles by restructuring sections, improving clarity, and tightening prose. Use when user wants to edit, revise, or improve an article draft.
+description: Редактирует и улучшает статьи — реструктурирует разделы, повышает ясность, убирает лишнее. Используй когда нужно отредактировать, переработать или улучшить черновик статьи.
 ---
 
 1. First, divide the article into sections based on its headings. Think about the main points you want to make during those sections.

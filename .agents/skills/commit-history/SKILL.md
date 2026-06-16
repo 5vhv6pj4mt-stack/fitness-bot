@@ -1,6 +1,6 @@
 ---
 name: commit-history
-description: List recent git commits that are linked to agent sessions, optionally filtered by branch or repo. Use when the user asks "show agent commits", "what has the agent shipped", or wants a list of commits with their session context.
+description: Показывает последние git-коммиты связанные с сессиями агента, с фильтрацией по ветке или репо. Используй когда пользователь спрашивает "покажи коммиты агента", "что агент отправил", или хочет список коммитов с контекстом сессий.
 argument-hint: "[branch=... repo=... limit=...]"
 user-invocable: true
 ---

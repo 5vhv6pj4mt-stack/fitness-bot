@@ -1,109 +1,109 @@
 ---
 name: tdd
-description: Test-driven development with red-green-refactor loop. Use when user wants to build features or fix bugs using TDD, mentions "red-green-refactor", wants integration tests, or asks for test-first development.
+description: Разработка через тесты (красный-зелёный-рефакторинг). Используй когда нужно построить фичу или исправить баг через TDD, упомянут цикл "red-green-refactor", нужны интеграционные тесты или разработка с тестами сначала.
 ---
 
-# Test-Driven Development
+# Разработка через тесты (TDD)
 
-## Philosophy
+## Философия
 
-**Core principle**: Tests should verify behavior through public interfaces, not implementation details. Code can change entirely; tests shouldn't.
+**Главный принцип**: тесты проверяют поведение через публичные интерфейсы, а не детали реализации. Код может полностью измениться — тесты не должны.
 
-**Good tests** are integration-style: they exercise real code paths through public APIs. They describe _what_ the system does, not _how_ it does it. A good test reads like a specification - "user can checkout with valid cart" tells you exactly what capability exists. These tests survive refactors because they don't care about internal structure.
+**Хорошие тесты** — интеграционного стиля: проходят реальные пути через публичные API. Описывают *что* делает система, а не *как*. Хороший тест читается как спецификация — «пользователь может оформить заказ с валидной корзиной» сразу говорит что умеет система. Такие тесты переживают рефакторинг, потому что им не важна внутренняя структура.
 
-**Bad tests** are coupled to implementation. They mock internal collaborators, test private methods, or verify through external means (like querying a database directly instead of using the interface). The warning sign: your test breaks when you refactor, but behavior hasn't changed. If you rename an internal function and tests fail, those tests were testing implementation, not behavior.
+**Плохие тесты** привязаны к реализации. Они мокают внутренние зависимости, тестируют приватные методы или проверяют через внешние средства (например, лезут в базу напрямую вместо использования интерфейса). Признак: тест ломается при рефакторинге, хотя поведение не изменилось.
 
-See [tests.md](tests.md) for examples and [mocking.md](mocking.md) for mocking guidelines.
+См. [tests.md](tests.md) с примерами и [mocking.md](mocking.md) с правилами моков.
 
-## Anti-Pattern: Horizontal Slices
+## Антипаттерн: горизонтальные срезы
 
-**DO NOT write all tests first, then all implementation.** This is "horizontal slicing" - treating RED as "write all tests" and GREEN as "write all code."
+**НЕ пиши сначала все тесты, потом весь код.** Это "горизонтальный срез" — RED = "написать все тесты", GREEN = "написать весь код".
 
-This produces **crap tests**:
+Это даёт **плохие тесты**:
 
-- Tests written in bulk test _imagined_ behavior, not _actual_ behavior
-- You end up testing the _shape_ of things (data structures, function signatures) rather than user-facing behavior
-- Tests become insensitive to real changes - they pass when behavior breaks, fail when behavior is fine
-- You outrun your headlights, committing to test structure before understanding the implementation
+- Написанные скопом тесты проверяют *воображаемое* поведение, а не реальное
+- В итоге тестируешь *форму* вещей (структуры данных, сигнатуры), а не поведение для пользователя
+- Тесты нечувствительны к реальным изменениям — проходят когда поведение сломано, падают когда всё хорошо
+- Обгоняешь свои фары: фиксируешь структуру тестов до того как понял реализацию
 
-**Correct approach**: Vertical slices via tracer bullets. One test → one implementation → repeat. Each test responds to what you learned from the previous cycle. Because you just wrote the code, you know exactly what behavior matters and how to verify it.
+**Правильный подход**: вертикальные срезы через трассирующие пули. Один тест → одна реализация → повтор. Каждый тест учитывает то, что узнал из предыдущего цикла.
 
 ```
-WRONG (horizontal):
-  RED:   test1, test2, test3, test4, test5
+НЕПРАВИЛЬНО (горизонтально):
+  RED:   тест1, тест2, тест3, тест4, тест5
   GREEN: impl1, impl2, impl3, impl4, impl5
 
-RIGHT (vertical):
-  RED→GREEN: test1→impl1
-  RED→GREEN: test2→impl2
-  RED→GREEN: test3→impl3
+ПРАВИЛЬНО (вертикально):
+  RED→GREEN: тест1→impl1
+  RED→GREEN: тест2→impl2
+  RED→GREEN: тест3→impl3
   ...
 ```
 
-## Workflow
+## Процесс
 
-### 1. Planning
+### 1. Планирование
 
-When exploring the codebase, use the project's domain glossary so that test names and interface vocabulary match the project's language, and respect ADRs in the area you're touching.
+При изучении кодовой базы используй предметный словарь проекта чтобы имена тестов совпадали с языком проекта.
 
-Before writing any code:
+До написания любого кода:
 
-- [ ] Confirm with user what interface changes are needed
-- [ ] Confirm with user which behaviors to test (prioritize)
-- [ ] Identify opportunities for [deep modules](deep-modules.md) (small interface, deep implementation)
-- [ ] Design interfaces for [testability](interface-design.md)
-- [ ] List the behaviors to test (not implementation steps)
-- [ ] Get user approval on the plan
+- [ ] Согласовать с пользователем какие изменения интерфейса нужны
+- [ ] Согласовать какие поведения тестировать (приоритизировать)
+- [ ] Найти возможности для [глубоких модулей](deep-modules.md) (маленький интерфейс, глубокая реализация)
+- [ ] Спроектировать интерфейсы для [тестируемости](interface-design.md)
+- [ ] Перечислить поведения для тестирования (не шаги реализации)
+- [ ] Получить одобрение пользователя
 
-Ask: "What should the public interface look like? Which behaviors are most important to test?"
+Спросить: «Как должен выглядеть публичный интерфейс? Какие поведения важнее всего протестировать?»
 
-**You can't test everything.** Confirm with the user exactly which behaviors matter most. Focus testing effort on critical paths and complex logic, not every possible edge case.
+**Нельзя протестировать всё.** Уточни у пользователя какие поведения важнее всего. Фокус на критических путях и сложной логике, не на каждом крайнем случае.
 
-### 2. Tracer Bullet
+### 2. Трассирующая пуля
 
-Write ONE test that confirms ONE thing about the system:
-
-```
-RED:   Write test for first behavior → test fails
-GREEN: Write minimal code to pass → test passes
-```
-
-This is your tracer bullet - proves the path works end-to-end.
-
-### 3. Incremental Loop
-
-For each remaining behavior:
+Написать ОДИН тест который подтверждает ОДНО свойство системы:
 
 ```
-RED:   Write next test → fails
-GREEN: Minimal code to pass → passes
+RED:   пишем тест для первого поведения → тест падает
+GREEN: пишем минимальный код чтобы тест прошёл → тест проходит
 ```
 
-Rules:
+Это трассирующая пуля — доказывает что путь работает от начала до конца.
 
-- One test at a time
-- Only enough code to pass current test
-- Don't anticipate future tests
-- Keep tests focused on observable behavior
+### 3. Инкрементальный цикл
 
-### 4. Refactor
-
-After all tests pass, look for [refactor candidates](refactoring.md):
-
-- [ ] Extract duplication
-- [ ] Deepen modules (move complexity behind simple interfaces)
-- [ ] Apply SOLID principles where natural
-- [ ] Consider what new code reveals about existing code
-- [ ] Run tests after each refactor step
-
-**Never refactor while RED.** Get to GREEN first.
-
-## Checklist Per Cycle
+Для каждого следующего поведения:
 
 ```
-[ ] Test describes behavior, not implementation
-[ ] Test uses public interface only
-[ ] Test would survive internal refactor
-[ ] Code is minimal for this test
-[ ] No speculative features added
+RED:   пишем следующий тест → падает
+GREEN: минимальный код чтобы прошёл → проходит
+```
+
+Правила:
+
+- Один тест за раз
+- Только код достаточный для текущего теста
+- Не предвосхищай будущие тесты
+- Тесты фокусируются на наблюдаемом поведении
+
+### 4. Рефакторинг
+
+После того как все тесты проходят, ищи [кандидатов для рефакторинга](refactoring.md):
+
+- [ ] Убрать дублирование
+- [ ] Углубить модули (спрятать сложность за простым интерфейсом)
+- [ ] Применить SOLID там где естественно
+- [ ] Подумать что новый код говорит о существующем
+- [ ] Запускать тесты после каждого шага рефакторинга
+
+**Никогда не рефакторь в состоянии RED.** Сначала выйди на GREEN.
+
+## Чеклист на каждый цикл
+
+```
+[ ] Тест описывает поведение, а не реализацию
+[ ] Тест использует только публичный интерфейс
+[ ] Тест переживёт внутренний рефакторинг
+[ ] Код минимален для этого теста
+[ ] Никаких спекулятивных фич
 ```

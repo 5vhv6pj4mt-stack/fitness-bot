@@ -1,6 +1,6 @@
 ---
 name: writing-shape
-description: Take a markdown file of raw material and shape it into an article through a conversational session — drafting candidate openings, growing the piece paragraph by paragraph, arguing about format (lists, tables, callouts, quotes) at each step. Use when the user has a pile of notes, fragments, or a rough draft and wants help turning it into something publishable.
+description: Берёт markdown с сырым материалом и превращает в статью через диалог: вступления, абзацы, формат. Используй когда есть заметки или черновик и нужна помощь в превращении их в публикацию.
 ---
 
 <what-to-do>

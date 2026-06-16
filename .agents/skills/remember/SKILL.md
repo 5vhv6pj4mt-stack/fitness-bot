@@ -1,6 +1,6 @@
 ---
 name: remember
-description: Explicitly save an insight, decision, or learning to agentmemory's long-term storage. Use when the user says "remember this", "save this", or wants to preserve knowledge for future sessions.
+description: Явно сохраняет вывод, решение или знание в долгосрочную память агента. Используй когда пользователь говорит "запомни это", "сохрани", или хочет сохранить знание для будущих сессий.
 argument-hint: "[what to remember]"
 user-invocable: true
 ---

@@ -1,6 +1,6 @@
 ---
 name: recap
-description: Summarize the last N agent sessions for the current project, grouped by date. Use when the user asks "recap", "what have we been doing", "this week", "today", or wants a rollup of recent work.
+description: Резюмирует последние N сессий агента по текущему проекту, сгруппированно по датам. Используй когда пользователь спрашивает "что мы делали", "сегодня", "на этой неделе" или хочет сводку последних работ.
 argument-hint: "[last N | today | this week]"
 user-invocable: true
 ---

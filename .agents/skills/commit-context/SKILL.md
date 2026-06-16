@@ -1,6 +1,6 @@
 ---
 name: commit-context
-description: Trace a file, function, or line back to the agent session that produced its current commit. Use when the user asks "why is this code here", "what was the agent doing when this changed", or wants context on a specific location in the codebase.
+description: Находит сессию агента которая создала текущий коммит для файла, функции или строки. Используй когда пользователь спрашивает "почему этот код здесь", "что делал агент когда это изменилось", или хочет контекст по конкретному месту в коде.
 argument-hint: "[file, function, or line]"
 user-invocable: true
 ---

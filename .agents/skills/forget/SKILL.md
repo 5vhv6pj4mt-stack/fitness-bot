@@ -1,6 +1,6 @@
 ---
 name: forget
-description: Delete specific observations or sessions from agentmemory. Use when user says "forget this", "delete memory", or wants to remove specific data for privacy.
+description: Удаляет наблюдения или сессии из памяти агента. Используй когда пользователь говорит "забудь это", "удали из памяти", или хочет убрать конкретные данные.
 argument-hint: "[what to forget - session ID, file path, or search term]"
 user-invocable: true
 ---

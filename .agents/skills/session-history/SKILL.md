@@ -1,6 +1,6 @@
 ---
 name: session-history
-description: Show what happened in recent past sessions on this project. Use when user asks "what did we do last time", "session history", "past sessions", or wants an overview of previous work.
+description: Показывает что происходило в последних сессиях по текущему проекту. Используй когда пользователь спрашивает "что делали в прошлый раз", "история сессий" или хочет обзор прошлых работ.
 user-invocable: true
 ---
 

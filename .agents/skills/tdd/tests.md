@@ -1,61 +1,57 @@
-# Good and Bad Tests
+# Хорошие и плохие тесты
 
-## Good Tests
+## Хорошие тесты
 
-**Integration-style**: Test through real interfaces, not mocks of internal parts.
+**Интеграционного стиля**: тестируют через реальные интерфейсы, а не через моки внутренних частей.
 
-```typescript
-// GOOD: Tests observable behavior
-test("user can checkout with valid cart", async () => {
-  const cart = createCart();
-  cart.add(product);
-  const result = await checkout(cart, paymentMethod);
-  expect(result.status).toBe("confirmed");
-});
+```python
+# ХОРОШО: тестирует наблюдаемое поведение
+def test_пользователь_может_оформить_заказ_с_валидной_корзиной():
+    cart = create_cart()
+    cart.add(product)
+    result = checkout(cart, payment_method)
+    assert result.status == "confirmed"
 ```
 
-Characteristics:
+Признаки:
 
-- Tests behavior users/callers care about
-- Uses public API only
-- Survives internal refactors
-- Describes WHAT, not HOW
-- One logical assertion per test
+- Тестирует поведение которое важно пользователям/вызывающему коду
+- Использует только публичный API
+- Переживает внутренние рефакторинги
+- Описывает ЧТО, а не КАК
+- Одно логическое утверждение на тест
 
-## Bad Tests
+## Плохие тесты
 
-**Implementation-detail tests**: Coupled to internal structure.
+**Тесты деталей реализации**: привязаны к внутренней структуре.
 
-```typescript
-// BAD: Tests implementation details
-test("checkout calls paymentService.process", async () => {
-  const mockPayment = jest.mock(paymentService);
-  await checkout(cart, payment);
-  expect(mockPayment.process).toHaveBeenCalledWith(cart.total);
-});
+```python
+# ПЛОХО: тестирует детали реализации
+def test_checkout_вызывает_payment_service_process():
+    mock_payment = Mock(payment_service)
+    checkout(cart, payment)
+    mock_payment.process.assert_called_with(cart.total)
 ```
 
-Red flags:
+Признаки:
 
-- Mocking internal collaborators
-- Testing private methods
-- Asserting on call counts/order
-- Test breaks when refactoring without behavior change
-- Test name describes HOW not WHAT
-- Verifying through external means instead of interface
+- Мокают внутренние зависимости
+- Тестируют приватные методы
+- Проверяют количество/порядок вызовов
+- Тест ломается при рефакторинге без изменения поведения
+- Имя теста описывает КАК, а не ЧТО
+- Проверяют через внешние средства вместо интерфейса
 
-```typescript
-// BAD: Bypasses interface to verify
-test("createUser saves to database", async () => {
-  await createUser({ name: "Alice" });
-  const row = await db.query("SELECT * FROM users WHERE name = ?", ["Alice"]);
-  expect(row).toBeDefined();
-});
+```python
+# ПЛОХО: обходит интерфейс для проверки
+def test_create_user_сохраняет_в_базу():
+    create_user(name="Алиса")
+    row = db.execute("SELECT * FROM users WHERE name = ?", ["Алиса"])
+    assert row is not None
 
-// GOOD: Verifies through interface
-test("createUser makes user retrievable", async () => {
-  const user = await createUser({ name: "Alice" });
-  const retrieved = await getUser(user.id);
-  expect(retrieved.name).toBe("Alice");
-});
+# ХОРОШО: проверяет через интерфейс
+def test_create_user_делает_пользователя_доступным():
+    user = create_user(name="Алиса")
+    retrieved = get_user(user.id)
+    assert retrieved.name == "Алиса"
 ```

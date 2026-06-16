@@ -1,6 +1,6 @@
 ---
 name: writing-fragments
-description: Grilling session that mines the user for fragments — heterogeneous nuggets of writing (claims, vignettes, sharp sentences, half-thoughts) — and appends them to a single document as raw material for a future article. Use when the user wants to develop ideas before imposing structure, or mentions "fragments", "ideate", or "raw material" for writing.
+description: Интервью-сессия для добычи фрагментов текста (утверждений, зарисовок, острых фраз) как сырья для будущей статьи. Используй когда нужно развить идеи до структуры или пользователь говорит "фрагменты", "набросок".
 ---
 
 <what-to-do>

@@ -1,10 +1,10 @@
-# Refactor Candidates
+# Кандидаты для рефакторинга
 
-After TDD cycle, look for:
+После TDD-цикла ищи:
 
-- **Duplication** → Extract function/class
-- **Long methods** → Break into private helpers (keep tests on public interface)
-- **Shallow modules** → Combine or deepen
-- **Feature envy** → Move logic to where data lives
-- **Primitive obsession** → Introduce value objects
-- **Existing code** the new code reveals as problematic
+- **Дублирование** → выдели функцию/класс
+- **Длинные методы** → разбей на приватные хелперы (тесты оставь на публичном интерфейсе)
+- **Поверхностные модули** → объедини или углуби
+- **Зависть к чужим данным** → перенеси логику туда где живут данные
+- **Примитивная одержимость** → введи объекты-значения
+- **Существующий код** который новый код делает очевидно проблемным

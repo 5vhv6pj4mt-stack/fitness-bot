@@ -1,59 +1,54 @@
-# When to Mock
+# Когда использовать моки
 
-Mock at **system boundaries** only:
+Мокай только на **границах системы**:
 
-- External APIs (payment, email, etc.)
-- Databases (sometimes - prefer test DB)
-- Time/randomness
-- File system (sometimes)
+- Внешние API (оплата, email, Telegram и т.д.)
+- Базы данных (иногда — лучше тестовая БД)
+- Время/случайность
+- Файловая система (иногда)
 
-Don't mock:
+Не мокай:
 
-- Your own classes/modules
-- Internal collaborators
-- Anything you control
+- Свои классы/модули
+- Внутренние зависимости
+- Всё что контролируешь сам
 
-## Designing for Mockability
+## Проектирование для тестируемости
 
-At system boundaries, design interfaces that are easy to mock:
+На границах системы проектируй интерфейсы которые легко замокать:
 
-**1. Use dependency injection**
+**1. Используй внедрение зависимостей**
 
-Pass external dependencies in rather than creating them internally:
+Передавай внешние зависимости снаружи, не создавай внутри:
 
-```typescript
-// Easy to mock
-function processPayment(order, paymentClient) {
-  return paymentClient.charge(order.total);
-}
+```python
+# Легко замокать
+def process_payment(order, payment_client):
+    return payment_client.charge(order.total)
 
-// Hard to mock
-function processPayment(order) {
-  const client = new StripeClient(process.env.STRIPE_KEY);
-  return client.charge(order.total);
-}
+# Сложно замокать
+def process_payment(order):
+    client = StripeClient(os.getenv("STRIPE_KEY"))
+    return client.charge(order.total)
 ```
 
-**2. Prefer SDK-style interfaces over generic fetchers**
+**2. Предпочитай SDK-стиль вместо общих обёрток**
 
-Create specific functions for each external operation instead of one generic function with conditional logic:
+Создавай отдельные функции для каждой внешней операции вместо одной общей с условной логикой:
 
-```typescript
-// GOOD: Each function is independently mockable
-const api = {
-  getUser: (id) => fetch(`/users/${id}`),
-  getOrders: (userId) => fetch(`/users/${userId}/orders`),
-  createOrder: (data) => fetch('/orders', { method: 'POST', body: data }),
-};
+```python
+# ХОРОШО: каждая функция мокается независимо
+class TelegramAPI:
+    def send_message(self, chat_id, text): ...
+    def send_photo(self, chat_id, photo): ...
+    def edit_message(self, chat_id, message_id, text): ...
 
-// BAD: Mocking requires conditional logic inside the mock
-const api = {
-  fetch: (endpoint, options) => fetch(endpoint, options),
-};
+# ПЛОХО: мок требует условной логики внутри
+class TelegramAPI:
+    def call(self, method, params): ...
 ```
 
-The SDK approach means:
-- Each mock returns one specific shape
-- No conditional logic in test setup
-- Easier to see which endpoints a test exercises
-- Type safety per endpoint
+SDK-подход означает:
+- Каждый мок возвращает одну конкретную форму данных
+- Никакой условной логики в настройке тестов
+- Сразу видно какие операции использует тест

@@ -1,33 +1,33 @@
-# Deep Modules
+# Глубокие модули
 
-From "A Philosophy of Software Design":
+Из книги "Философия проектирования программного обеспечения":
 
-**Deep module** = small interface + lots of implementation
+**Глубокий модуль** = маленький интерфейс + много реализации
 
 ```
 ┌─────────────────────┐
-│   Small Interface   │  ← Few methods, simple params
+│  Маленький интерфейс│  ← Мало методов, простые параметры
 ├─────────────────────┤
 │                     │
 │                     │
-│  Deep Implementation│  ← Complex logic hidden
+│  Глубокая реализация│  ← Сложная логика спрятана внутри
 │                     │
 │                     │
 └─────────────────────┘
 ```
 
-**Shallow module** = large interface + little implementation (avoid)
+**Поверхностный модуль** = большой интерфейс + мало реализации (избегать)
 
 ```
 ┌─────────────────────────────────┐
-│       Large Interface           │  ← Many methods, complex params
+│       Большой интерфейс         │  ← Много методов, сложные параметры
 ├─────────────────────────────────┤
-│  Thin Implementation            │  ← Just passes through
+│  Тонкая реализация              │  ← Просто прокидывает дальше
 └─────────────────────────────────┘
 ```
 
-When designing interfaces, ask:
+При проектировании интерфейсов спрашивай себя:
 
-- Can I reduce the number of methods?
-- Can I simplify the parameters?
-- Can I hide more complexity inside?
+- Можно ли сократить количество методов?
+- Можно ли упростить параметры?
+- Можно ли спрятать больше сложности внутрь?

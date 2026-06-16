@@ -1,6 +1,6 @@
 ---
 name: recall
-description: Search agentmemory for past observations, sessions, and learnings about a topic. Use when the user says "recall", "remember", "what did we do", or needs context from past sessions.
+description: Ищет в памяти агента прошлые наблюдения, сессии и выводы по теме. Используй когда пользователь говорит "вспомни", "что мы делали", или нужен контекст прошлых сессий.
 argument-hint: "[search query]"
 user-invocable: true
 ---
