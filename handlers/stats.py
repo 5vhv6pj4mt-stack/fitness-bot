@@ -12,23 +12,14 @@ from database.db import (get_user, get_last_workouts, get_workout_sets, get_day_
                          get_exercise_prs, get_nutrition_week_avg,
                          get_top_exercises, get_exercise_history,
                          get_best_sets_for_1rm, get_muscle_volume,
-                         get_tonnage_by_weeks)
+                         get_tonnage_by_weeks, get_workout_streak, get_plateau_exercises)
 from handlers.nav import send_nav, track_msg
 from handlers.nutrition import user_today
 from keyboards.keyboards import main_menu
 
 router = Router()
 
-DAY_TYPES = {
-    "upper_strength": "Верх — Сила",
-    "upper_volume": "Верх — Объём",
-    "legs": "Ноги",
-}
-WEEK_TYPES = {
-    "strength": "Силовая",
-    "volume": "Объёмная",
-    "deload": "Разгрузочная",
-}
+from constants import DAY_TYPES, WEEK_TYPES
 
 
 def _bar(current: float, goal: float) -> str:
@@ -156,14 +147,22 @@ async def today_summary(message: Message):
 async def show_stats(message: Message):
     user = await get_user(message.from_user.id)
 
-    all_time, workouts, prs, nutrition = await asyncio.gather(
+    all_time, workouts, prs, nutrition, streak, plateaus = await asyncio.gather(
         get_all_time_stats(message.from_user.id),
         get_last_workouts_rich(message.from_user.id, 5),
         get_exercise_prs(message.from_user.id, 6),
         get_nutrition_week_avg(message.from_user.id),
+        get_workout_streak(message.from_user.id),
+        get_plateau_exercises(message.from_user.id),
     )
 
     lines = ["📊 <b>Статистика</b>\n"]
+
+    # Стрик
+    if streak["current"] > 0:
+        fire = "🔥" * min(streak["current"], 5)
+        longest_str = f"  ·  рекорд: {streak['longest']}" if streak["longest"] > streak["current"] else ""
+        lines.append(f"{fire} Стрик: <b>{streak['current']} тренировок подряд</b>{longest_str}\n")
 
     # Общий итог
     if all_time["total_workouts"] > 0:
@@ -213,6 +212,13 @@ async def show_stats(message: Message):
             f"🔥 {nutrition['avg_calories']:.0f} / {user['goal_calories']} ккал ({cal_pct}%)\n"
             f"🥩 Белок: {nutrition['avg_protein']:.0f} / {user['goal_protein']}г ({prot_pct}%)"
         )
+
+    # Плато
+    if plateaus and user.get("notify_plateau", 1):
+        lines.append("\n⚠️ <b>Плато (3+ тренировки одинаковый вес):</b>")
+        for p in plateaus:
+            rpe_hint = " — попробуй +2.5кг" if p["avg_rpe"] <= 8.5 else " — сохрани вес, работай над техникой"
+            lines.append(f"• {p['exercise']}: {p['weight']:.1f}кг{rpe_hint}")
 
     await send_nav(message, "\n".join(lines), reply_markup=main_menu())
     sent = await message.answer(

@@ -1,0 +1,127 @@
+name: Weekly Audit
+
+on:
+  schedule:
+    - cron: '0 10 * * 1'  # каждый понедельник в 10:00 UTC (17:00 UTC+7)
+  workflow_dispatch:       # ручной запуск из GitHub UI
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -q pyflakes
+
+      - name: Python syntax check
+        id: py_check
+        run: |
+          echo "ERRORS<<EOF" >> $GITHUB_OUTPUT
+          find . -name "*.py" \
+            -not -path "./venv/*" \
+            -not -path "./.git/*" \
+            | xargs python -m py_compile 2>&1 \
+            | head -20 || true
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          # Count files
+          PY_COUNT=$(find . -name "*.py" -not -path "./venv/*" | wc -l)
+          echo "PY_COUNT=$PY_COUNT" >> $GITHUB_OUTPUT
+
+          # Syntax errors count
+          ERRS=$(find . -name "*.py" -not -path "./venv/*" | xargs python -m py_compile 2>&1 | wc -l)
+          echo "ERRS=$ERRS" >> $GITHUB_OUTPUT
+
+      - name: Check for TODO / FIXME / HACK
+        id: todos
+        run: |
+          COUNT=$(grep -rn "TODO\|FIXME\|HACK\|XXX" \
+            --include="*.py" --include="*.jsx" --include="*.js" \
+            --exclude-dir=venv --exclude-dir=node_modules --exclude-dir=.git \
+            . | wc -l)
+          echo "COUNT=$COUNT" >> $GITHUB_OUTPUT
+
+      - name: Check for hardcoded secrets patterns
+        id: secrets
+        run: |
+          HITS=$(grep -rn \
+            -e "password\s*=\s*['\"][^'\"]\+['\"]" \
+            -e "api_key\s*=\s*['\"][^'\"]\+['\"]" \
+            -e "secret\s*=\s*['\"][^'\"]\+['\"]" \
+            --include="*.py" --include="*.js" \
+            --exclude-dir=venv --exclude-dir=node_modules --exclude-dir=.git \
+            . 2>/dev/null | grep -v "os.getenv\|os.environ\|config\." | wc -l)
+          echo "HITS=$HITS" >> $GITHUB_OUTPUT
+
+      - name: Build frontend
+        id: frontend
+        run: |
+          cd webapp
+          npm ci --silent 2>&1 | tail -3
+          npm run build 2>&1 | tail -5
+          echo "STATUS=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Count lines of code
+        id: loc
+        run: |
+          PY_LINES=$(find . -name "*.py" -not -path "./venv/*" | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
+          JS_LINES=$(find ./webapp/src -name "*.jsx" -o -name "*.js" 2>/dev/null | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
+          echo "PY=$PY_LINES" >> $GITHUB_OUTPUT
+          echo "JS=$JS_LINES" >> $GITHUB_OUTPUT
+
+      - name: Send Telegram report
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          PY_ERRS="${{ steps.py_check.outputs.ERRS }}"
+          PY_COUNT="${{ steps.py_check.outputs.PY_COUNT }}"
+          TODOS="${{ steps.todos.outputs.COUNT }}"
+          SECRETS="${{ steps.secrets.outputs.HITS }}"
+          PY_LINES="${{ steps.loc.outputs.PY }}"
+          JS_LINES="${{ steps.loc.outputs.JS }}"
+
+          # Status icons
+          PY_ICON="✅"
+          [ "$PY_ERRS" -gt 0 ] 2>/dev/null && PY_ICON="🔴"
+
+          BUILD_ICON="✅"
+          [ "${{ steps.frontend.outcome }}" = "failure" ] && BUILD_ICON="🔴"
+
+          SEC_ICON="✅"
+          [ "$SECRETS" -gt 0 ] 2>/dev/null && SEC_ICON="⚠️"
+
+          TEXT="🔍 <b>Еженедельный аудит fitness-bot</b>
+
+          <b>Python (${PY_COUNT} файлов)</b>
+          ${PY_ICON} Синтаксис: $([ "$PY_ERRS" -eq 0 ] 2>/dev/null && echo "чисто" || echo "${PY_ERRS} ошибок")
+
+          <b>Frontend (webapp)</b>
+          ${BUILD_ICON} Сборка: $([ "${{ steps.frontend.outcome }}" = "success" ] && echo "OK" || echo "FAILED")
+
+          <b>Качество кода</b>
+          📝 TODO/FIXME: ${TODOS} мест
+          ${SEC_ICON} Захардкоженные секреты: $([ "$SECRETS" -eq 0 ] 2>/dev/null && echo "не найдено" || echo "${SECRETS} — проверь вручную")
+
+          <b>Объём кода</b>
+          🐍 Python: ~${PY_LINES} строк
+          ⚛️ React/JS: ~${JS_LINES} строк
+
+          <a href=\"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\">Открыть детали в GitHub Actions</a>"
+
+          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"chat_id\": \"${CHAT_ID}\",
+              \"text\": \"$(echo "$TEXT" | sed 's/"/\\"/g' | tr '\n' ' ')\",
+              \"parse_mode\": \"HTML\",
+              \"disable_web_page_preview\": true
+            }"

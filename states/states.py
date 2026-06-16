@@ -9,6 +9,10 @@ class FoodLogging(StatesGroup):
     waiting_input = State()
 
 
+class NutritionChat(StatesGroup):
+    chatting = State()
+
+
 class Setup(StatesGroup):
     waiting_weight = State()
     waiting_calories = State()

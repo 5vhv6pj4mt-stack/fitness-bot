@@ -1,0 +1,16 @@
+[Unit]
+Description=Fitness Bot — Press Analysis Worker
+After=network.target
+
+[Service]
+Type=simple
+User=oracle
+WorkingDirectory=/home/oracle/fitness-bot
+ExecStart=/home/oracle/fitness-bot/venv/bin/python -m services.press_worker
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/home/oracle/fitness-bot/press_worker.log
+StandardError=append:/home/oracle/fitness-bot/press_worker.log
+
+[Install]
+WantedBy=multi-user.target

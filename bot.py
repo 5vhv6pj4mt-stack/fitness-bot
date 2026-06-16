@@ -10,9 +10,9 @@ from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
 
 from config import BOT_TOKEN
-from database.db import init_db, get_all_onboarded_users, get_meal_reminders
+from database.db import init_db, get_all_onboarded_users, get_meal_reminders, get_user
 from handlers import main_menu, nutrition, workout, onboarding, settings, stats, edit, test_video
-from services.scheduler import setup_scheduler, setup_daily_reminders, setup_workout_reminder
+from services.scheduler import setup_scheduler, setup_daily_reminders, setup_workout_reminder, setup_morning_brief
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,8 +88,11 @@ async def main():
 
     for uid in await get_all_onboarded_users():
         meals = await get_meal_reminders(uid)
+        user = await get_user(uid)
         setup_daily_reminders(uid, meals)
         setup_workout_reminder(uid)
+        if user and user.get("notify_morning_brief", 1):
+            setup_morning_brief(uid, user.get("morning_brief_hour", 8), user.get("morning_brief_minute", 0))
 
     logger.info("Fitness Bot запущен")
     try:

@@ -8,3 +8,5 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY", "")
 DB_PATH = "fitness.db"
+TEMP_VIDEO_DIR = "temp/videos"
+QUEUE_DIR     = "temp/queue"

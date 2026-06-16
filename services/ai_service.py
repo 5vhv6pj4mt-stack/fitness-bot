@@ -437,10 +437,98 @@ async def get_nutrition_advice(totals: dict, goals: dict) -> str:
     )
 
 
+async def get_food_idea(remaining_kcal: float, remaining_protein: float,
+                        remaining_carbs: float, remaining_fat: float,
+                        meal_hint: str = "завтрак") -> str:
+    """Предлагает конкретное блюдо под оставшиеся макросы."""
+    return await _ask(
+        _NUTRITION_SYSTEM,
+        f"""Осталось добрать за день: {remaining_kcal:.0f} ккал | Б:{remaining_protein:.0f}г | У:{remaining_carbs:.0f}г | Ж:{remaining_fat:.0f}г.
+Время приёма пищи: {meal_hint}.
+
+Предложи ОДНО конкретное блюдо или комбинацию продуктов которые закроют эти макросы.
+Формат: название блюда, граммовки ингредиентов, примерное КБЖУ.
+Максимум 4 строки, никаких вступлений.""",
+        max_tokens=150, temperature=0.6,
+    )
+
+
+async def nutrition_chat(user_message: str, context: str,
+                         history: list[dict] | None = None) -> str:
+    """Чат с нутриологом. history — список {role, content} для multi-turn."""
+    messages = list(history or [])
+    if not messages:
+        messages.append({"role": "user", "content": f"Контекст моего питания:\n{context}"})
+        messages.append({"role": "assistant", "content": "Понял, готов помочь! Задавай вопросы по питанию."})
+    messages.append({"role": "user", "content": user_message})
+    response = await asyncio.wait_for(
+        _claude.messages.create(
+            model=MODEL,
+            max_tokens=400,
+            system=_NUTRITION_SYSTEM + "\n\nОтвечай практично и кратко (3-5 строк). Конкретные продукты, граммовки. Никакой воды.",
+            messages=messages,
+        ),
+        timeout=30.0,
+    )
+    return response.content[0].text
+
+
+async def parse_voice_set(transcript: str, exercises: list[str]) -> dict:
+    """Парсит голосовое сообщение о подходе.
+    Возвращает {exercise, weight, reps, rpe, error}.
+    error: None | 'ambiguous' | 'no_weight' | 'no_reps'
+    """
+    exercises_str = "\n".join(f"- {e}" for e in exercises) if exercises else "- (список упражнений не указан)"
+    content = await _ask(
+        "",
+        f"""Разбери голосовое сообщение спортсмена о выполненном подходе.
+
+Упражнения текущей тренировки:
+{exercises_str}
+
+Сообщение: "{transcript}"
+
+Верни ТОЛЬКО JSON:
+{{"exercise": "точное название из списка или null если непонятно",
+  "weight": число или null,
+  "reps": число или null,
+  "rpe": число_от_1_до_10 или null,
+  "error": null или "ambiguous" или "no_weight" или "no_reps"}}
+
+Правила:
+- exercise: выбери ближайшее из списка упражнений. null только если совсем не понятно
+- weight: вес в кг (0 если свой вес / без веса)
+- rpe: если сказал "тяжело/жёстко" → 8.5, "легко" → 6, "нормально" → 7.5
+- error: null если всё понятно; "ambiguous" если непонятно упражнение; "no_weight" если вес не указан и он нужен; "no_reps" если повторы не указаны""",
+        max_tokens=150, temperature=0.0,
+    )
+    try:
+        return _extract_json(content.strip())
+    except Exception:
+        return {"exercise": None, "weight": None, "reps": None, "rpe": None, "error": "ambiguous"}
+
+
 # ── ExerciseDB GIF — анимированные 3D GIF, единый стиль ─────────────────────
 
 _gif_cache: dict[str, str | None] = {}  # in-memory кэш на сессию
 _GIF_CACHE_FILE = "exercise_gif_cache.json"
+
+
+async def get_morning_tip(user: dict, is_workout_day: bool, week_type: str) -> str:
+    """Короткий персональный совет на утро — питание, восстановление или тренировка."""
+    goal_labels = {"mass": "набор массы", "loss": "похудение", "strength": "сила", "tone": "тонус"}
+    goal = goal_labels.get(user.get("goal", "mass"), "набор массы")
+    context = f"тренировочный день ({week_type})" if is_workout_day else "день отдыха"
+    return await _ask(
+        _COACH_SYSTEM,
+        f"""Атлет: {user.get('name', 'спортсмен')}, цель — {goal}, вес {user.get('weight', 80)}кг.
+Сегодня: {context}.
+
+Дай ОДИН короткий практичный совет на сегодня (2-3 предложения максимум).
+Чередуй темы: питание, восстановление, техника, психология, вода, сон.
+Никаких вступлений типа "Совет дня:" — сразу по делу.""",
+        max_tokens=120, temperature=0.8,
+    )
 
 
 def _load_gif_cache() -> None:

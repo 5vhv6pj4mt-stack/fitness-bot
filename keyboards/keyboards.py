@@ -28,7 +28,8 @@ def nutrition_menu() -> ReplyKeyboardMarkup:
         keyboard=[
             [KeyboardButton(text="➕ Записать приём пищи")],
             [KeyboardButton(text="📌 Шаблоны"), KeyboardButton(text="🍴 Что съел сегодня")],
-            [KeyboardButton(text="💡 Совет по питанию"), KeyboardButton(text="✏️ Изменить запись питания")],
+            [KeyboardButton(text="🤖 Спросить ИИ"), KeyboardButton(text="💡 Совет по питанию")],
+            [KeyboardButton(text="✏️ Изменить запись питания")],
             [KeyboardButton(text="🏠 Главное меню")],
         ],
         resize_keyboard=True
