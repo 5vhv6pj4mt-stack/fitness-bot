@@ -213,7 +213,7 @@ function SetForm({ exercise, setNum, totalSets, plannedWeight, repsRange, rpeRan
   }
 
   const submit = async () => {
-    if (!weight || !reps) return
+    if (weight == null || weight < 0 || !reps) return
     setLoading(true)
     haptic('medium')
     try {
