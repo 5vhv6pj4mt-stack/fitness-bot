@@ -597,7 +597,7 @@ async def get_workout_sets(workout_id: int) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM workout_sets WHERE workout_id=? ORDER BY set_number",
+            "SELECT * FROM workout_sets WHERE workout_id=? ORDER BY id",
             (workout_id,)
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
