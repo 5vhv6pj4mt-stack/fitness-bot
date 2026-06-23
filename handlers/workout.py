@@ -964,30 +964,35 @@ async def finish_workout_flow(message: Message, state: FSMContext):
     # Считаем тоннаж и средний RPE
     tonnage = sum(s["actual_weight"] * s["reps"] for s in all_sets)
     avg_rpe = sum(s["rpe"] for s in all_sets) / len(all_sets) if all_sets else 0
+
+    from database.db import get_workout_by_id
+    existing = await get_workout_by_id(workout_id)
+    already_finished = existing and existing.get("is_finished")
+
     await finish_workout(workout_id, tonnage, avg_rpe)
 
-    # Продвигаем программу
-    day_index = user["current_day_index"]
-    current_week_type = user["current_week_type"]
-    day_types = await get_user_day_types(user["user_id"], current_week_type)
-    week_types = await get_user_week_types(user["user_id"])
+    # Продвигаем программу только если тренировка не была уже завершена через webapp
+    if not already_finished:
+        day_index = user["current_day_index"]
+        current_week_type = user["current_week_type"]
+        day_types = await get_user_day_types(user["user_id"], current_week_type)
+        week_types = await get_user_week_types(user["user_id"])
 
-    next_day_index = day_index + 1
-    next_week_type = current_week_type
-    next_week_num = user["current_week"]
+        next_day_index = day_index + 1
+        next_week_type = current_week_type
+        next_week_num = user["current_week"]
 
-    if next_day_index >= len(day_types):
-        next_day_index = 0
-        # переходим к следующему типу недели
-        if week_types:
-            curr_idx = week_types.index(current_week_type) if current_week_type in week_types else 0
-            next_week_type = week_types[(curr_idx + 1) % len(week_types)]
-        next_week_num = user["current_week"] + 1
+        if next_day_index >= len(day_types):
+            next_day_index = 0
+            if week_types:
+                curr_idx = week_types.index(current_week_type) if current_week_type in week_types else 0
+                next_week_type = week_types[(curr_idx + 1) % len(week_types)]
+            next_week_num = user["current_week"] + 1
 
-    await update_user(message.chat.id,
-                      current_day_index=next_day_index,
-                      current_week_type=next_week_type,
-                      current_week=next_week_num)
+        await update_user(message.chat.id,
+                          current_day_index=next_day_index,
+                          current_week_type=next_week_type,
+                          current_week=next_week_num)
 
     await state.clear()
 

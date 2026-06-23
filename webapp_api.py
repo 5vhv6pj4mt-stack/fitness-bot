@@ -413,6 +413,10 @@ async def finish_workout_endpoint(
     except Exception:
         duration_minutes = 0
 
+    # Если тренировка уже завершена (через бот) — не двигаем день повторно
+    if workout.get("is_finished"):
+        raise HTTPException(status_code=409, detail="Already finished")
+
     await finish_workout(body.workout_id, tonnage, avg_rpe)
 
     # Продвигаем программу
