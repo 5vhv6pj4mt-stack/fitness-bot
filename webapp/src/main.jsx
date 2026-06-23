@@ -17,9 +17,10 @@ function showNotInTelegram() {
         Откройте приложение через Telegram-бота<br>
         <a href="https://t.me/stat_sila_bot" style="color:#0a84ff;text-decoration:none;">@stat_sila_bot</a>
       </div>
-      <div style="margin-top:24px;padding:12px 20px;background:#2c2c2e;border-radius:12px;font-size:12px;color:#636366;">
-        Приложение работает только<br>внутри Telegram Mini App
-      </div>
+      <button onclick="location.reload()" style="
+        margin-top:24px;padding:12px 28px;background:#0a84ff;border:none;
+        border-radius:12px;font-size:15px;font-weight:600;color:#fff;cursor:pointer;
+      ">Попробовать снова</button>
     </div>
   `
 }
@@ -41,16 +42,15 @@ function mount() {
   }
 }
 
-// Ждём появления window.Telegram.WebApp. На мобильных он инжектируется
-// асинхронно, на десктопе обычно сразу. Монтируем при первой возможности.
+// Ждём появления window.Telegram.WebApp.
+// async-скрипт TG может грузиться дольше модуля — ждём до 15 сек.
 function waitAndMount(attempt = 0) {
   if (window.Telegram?.WebApp) {
     mount()
-  } else if (attempt >= 10) {
-    // После 10 попыток (~5.5 сек) — показываем заглушку вместо вечного спиннера
+  } else if (attempt >= 30) {
     showNotInTelegram()
   } else {
-    setTimeout(() => waitAndMount(attempt + 1), 100 * (attempt + 1))
+    setTimeout(() => waitAndMount(attempt + 1), Math.min(100 * (attempt + 1), 500))
   }
 }
 
