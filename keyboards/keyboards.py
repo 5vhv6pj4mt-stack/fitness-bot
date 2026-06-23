@@ -1,5 +1,7 @@
 from aiogram.types import (ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup,
-                            InlineKeyboardButton)
+                            InlineKeyboardButton, WebAppInfo)
+
+WEBAPP_URL = "https://oracle-bot-bot.duckdns.org/fitness/"
 
 
 def _fw(w: float) -> str:
@@ -12,6 +14,7 @@ def _fr(r: float) -> str:
 
 def main_menu(day_label: str = None, week_label: str = None) -> ReplyKeyboardMarkup:
     buttons = []
+    buttons.append([KeyboardButton(text="🏋️ Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL))])
     if day_label:
         suffix = f" — {week_label}" if week_label else ""
         buttons.append([KeyboardButton(text=f"▶️ Начать: {day_label}{suffix}")])
