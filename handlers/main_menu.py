@@ -5,7 +5,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 
 from database.db import get_user, create_user, update_user, get_day_nutrition, get_last_workouts, reset_user_cycle, delete_user_program, save_user_program
-from keyboards.keyboards import main_menu
+from keyboards.keyboards import main_menu, WEBAPP_URL
 from services.ai_service import generate_program
 
 
@@ -86,6 +86,34 @@ async def show_main(message: Message, user: dict, use_nav: bool = False):
         await send_nav(message, text, reply_markup=kb)
     else:
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+    await _ensure_pinned(message, user)
+
+
+async def _ensure_pinned(message: Message, user: dict):
+    """Отправляет и закрепляет сообщение-шорткат с кнопкой мини-приложения.
+    Делает это один раз — id закреплённого сообщения хранится в users.pinned_msg_id."""
+    if user.get("pinned_msg_id"):
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+    try:
+        sent = await message.answer(
+            "👆 Нажми чтобы открыть приложение",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="🏋️ Открыть Стать",
+                    web_app=WebAppInfo(url=WEBAPP_URL),
+                )
+            ]])
+        )
+        await message.bot.pin_chat_message(
+            chat_id=message.chat.id,
+            message_id=sent.message_id,
+            disable_notification=True,
+        )
+        await update_user(user["user_id"], pinned_msg_id=sent.message_id)
+    except Exception:
+        pass
 
 
 @router.message(F.text == "🏠 Главное меню")

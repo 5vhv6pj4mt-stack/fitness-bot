@@ -110,6 +110,7 @@ async def init_db():
             ("brief_water",     "INTEGER DEFAULT 1"),
             ("notify_overtraining", "INTEGER DEFAULT 1"),
             ("weight_step", "REAL DEFAULT 2.5"),
+            ("pinned_msg_id", "INTEGER DEFAULT NULL"),
         ]:
             try:
                 await db.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
@@ -387,6 +388,7 @@ _ALLOWED_USER_FIELDS = {
     "press_analysis_enabled",
     "brief_workout", "brief_yesterday", "brief_nutrient", "brief_food_idea",
     "brief_recovery", "brief_week_prog", "brief_tip", "brief_water",
+    "notify_overtraining", "weight_step", "pinned_msg_id",
 }
 
 async def update_user(user_id: int, **kwargs):
