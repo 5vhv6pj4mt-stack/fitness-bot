@@ -26,7 +26,7 @@ _MEAL_TEXTS = {m["id"]: m["text"] for m in MEALS}
 async def _send_meal_reminder(user_id: int, text: str):
     if _bot is None:
         return
-    # Не беспокоим, если человек уже что-то записал за последние 30 минут
+    logger.info("Напоминание о еде → user_id=%s", user_id)
     if await was_food_logged_recently(user_id, minutes=30):
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -38,7 +38,7 @@ async def _send_meal_reminder(user_id: int, text: str):
         logger.warning("Не удалось отправить напоминание %s: %s", user_id, e)
 
 
-def setup_daily_reminders(user_id: int, user_meals: list[dict] = None):
+def setup_daily_reminders(user_id: int, user_meals: list[dict] = None, utc_offset: int = 7):
     """Регистрирует cron-напоминания для пользователя по его настройкам из БД."""
     if _scheduler is None:
         return
@@ -53,17 +53,18 @@ def setup_daily_reminders(user_id: int, user_meals: list[dict] = None):
             if _scheduler.get_job(job_id):
                 _scheduler.remove_job(job_id)
             continue
+        utc_hour = (meal["hour"] - utc_offset) % 24
         _scheduler.add_job(
             _send_meal_reminder,
             "cron",
-            hour=meal["hour"],
+            hour=utc_hour,
             minute=meal["minute"],
             args=[user_id, _MEAL_TEXTS.get(meal_id, "🍽 Время записать приём пищи!")],
             id=job_id,
             replace_existing=True,
-            timezone="Asia/Krasnoyarsk",
+            timezone="UTC",
         )
-    logger.info("Напоминания настроены для user_id=%s", user_id)
+    logger.info("Напоминания настроены для user_id=%s (UTC+%s)", user_id, utc_offset)
 
 
 def remove_daily_reminders(user_id: int):
@@ -163,6 +164,7 @@ async def _send_workout_reminder(user_id: int):
     from datetime import date, timedelta, timezone, timedelta as td
     if _bot is None:
         return
+    logger.info("Напоминание о тренировке → user_id=%s", user_id)
     user = await get_user(user_id)
     if not user:
         return
@@ -187,20 +189,21 @@ async def _send_workout_reminder(user_id: int):
         logger.warning("Не удалось отправить напоминание о тренировке %s: %s", user_id, e)
 
 
-def setup_workout_reminder(user_id: int, hour: int = 17, minute: int = 0):
+def setup_workout_reminder(user_id: int, hour: int = 17, minute: int = 0, utc_offset: int = 7):
     """Регистрирует ежедневное напоминание о тренировке для пользователя."""
     if _scheduler is None:
         return
     job_id = f"workout_{user_id}"
+    utc_hour = (hour - utc_offset) % 24
     _scheduler.add_job(
         _send_workout_reminder,
         "cron",
-        hour=hour,
+        hour=utc_hour,
         minute=minute,
         args=[user_id],
         id=job_id,
         replace_existing=True,
-        timezone="Asia/Krasnoyarsk",
+        timezone="UTC",
     )
 
 
@@ -212,6 +215,7 @@ async def _send_morning_brief(user_id: int):
     from datetime import datetime, timedelta as td, timezone
     if _bot is None:
         return
+    logger.info("Утренний бриф → user_id=%s", user_id)
     user = await get_user(user_id)
     if not user or not user.get("notify_morning_brief", 1):
         return
@@ -366,20 +370,21 @@ async def _send_morning_brief(user_id: int):
         logger.warning("Morning brief failed for %s: %s", user_id, e)
 
 
-def setup_morning_brief(user_id: int, hour: int = 8, minute: int = 0):
+def setup_morning_brief(user_id: int, hour: int = 8, minute: int = 0, utc_offset: int = 7):
     """Регистрирует ежедневный утренний бриф для пользователя."""
     if _scheduler is None:
         return
     job_id = f"morning_brief_{user_id}"
+    utc_hour = (hour - utc_offset) % 24
     _scheduler.add_job(
         _send_morning_brief,
         "cron",
-        hour=hour,
+        hour=utc_hour,
         minute=minute,
         args=[user_id],
         id=job_id,
         replace_existing=True,
-        timezone="Asia/Krasnoyarsk",
+        timezone="UTC",
     )
 
 

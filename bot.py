@@ -89,10 +89,11 @@ async def main():
     for uid in await get_all_onboarded_users():
         meals = await get_meal_reminders(uid)
         user = await get_user(uid)
-        setup_daily_reminders(uid, meals)
-        setup_workout_reminder(uid)
+        utc_offset = user.get("utc_offset", 7) if user else 7
+        setup_daily_reminders(uid, meals, utc_offset=utc_offset)
+        setup_workout_reminder(uid, utc_offset=utc_offset)
         if user and user.get("notify_morning_brief", 1):
-            setup_morning_brief(uid, user.get("morning_brief_hour", 8), user.get("morning_brief_minute", 0))
+            setup_morning_brief(uid, user.get("morning_brief_hour", 8), user.get("morning_brief_minute", 0), utc_offset=utc_offset)
 
     logger.info("Fitness Bot запущен")
     try:

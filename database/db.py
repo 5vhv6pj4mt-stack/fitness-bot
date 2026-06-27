@@ -250,6 +250,11 @@ async def init_db():
                 recommendation TEXT
             )
         """)
+        # Индексы для ускорения частых запросов
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_workouts_user_date ON workouts(user_id, date DESC)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_workout_sets_workout ON workout_sets(workout_id)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_food_log_user_date ON food_log(user_id, date)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_user_program_user ON user_program(user_id, week_type, day_type)")
         await db.commit()
 
 

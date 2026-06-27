@@ -42,6 +42,7 @@ from database.db import (
     get_workout_streak,
     check_exercise_pr,
     get_plateau_exercises,
+    get_overtraining_risk,
 )
 
 from contextlib import asynccontextmanager
@@ -73,6 +74,12 @@ from constants import DAY_TYPES, WEEK_TYPES
 
 def today() -> str:
     return date.today().isoformat()
+
+
+def user_today(utc_offset: int = 0) -> str:
+    from datetime import datetime, timezone, timedelta
+    tz = timezone(timedelta(hours=utc_offset))
+    return datetime.now(tz).date().isoformat()
 
 
 @app.get("/api/health")
@@ -196,9 +203,12 @@ async def dashboard(x_init_data: str = Header(alias="x-init-data")):
         raise HTTPException(status_code=404, detail="User not found")
 
     from datetime import date as date_cls, timedelta
-    nutrition = await get_day_nutrition(user_id, today())
+    utc_offset = user.get("utc_offset") or 0
+    nutrition = await get_day_nutrition(user_id, user_today(utc_offset))
     workouts = await get_last_workouts(user_id, 8)
     day_type, week_type, exercises = await get_current_day(user)
+    overtraining = await get_overtraining_risk(user_id)
+    nutr_avg = await get_nutrition_week_avg(user_id)
 
     workout_history = [
         {
@@ -256,6 +266,16 @@ async def dashboard(x_init_data: str = Header(alias="x-init-data")):
             "current": streak["current"],
             "longest": streak["longest"],
             "last_date": streak["last_date"],
+        },
+        "overtraining": overtraining,
+        "nutrient_deficit": {
+            "days_tracked": nutr_avg["days_tracked"],
+            "avg_calories": round(nutr_avg["avg_calories"]),
+            "avg_protein": round(nutr_avg["avg_protein"], 1),
+            "avg_carbs": round(nutr_avg["avg_carbs"], 1),
+            "avg_fat": round(nutr_avg["avg_fat"], 1),
+            "deficit_calories": max(0, round(user["goal_calories"] - nutr_avg["avg_calories"])),
+            "deficit_protein": max(0, round(user["goal_protein"] - nutr_avg["avg_protein"], 1)),
         },
     }
 
@@ -319,7 +339,7 @@ async def start_workout(x_init_data: str = Header(alias="x-init-data")):
 
     weight_step = user.get("weight_step") or 2.5
     enriched = await enrich_exercises_with_history(user_id, exercises, weight_step)
-    workout_id = await create_workout(user_id, today(), day_type, user["current_week"], week_type)
+    workout_id = await create_workout(user_id, user_today(user.get("utc_offset") or 0), day_type, user["current_week"], week_type)
     return {"workout_id": workout_id, "day_type": day_type, "exercises": enriched, "weight_step": weight_step}
 
 
@@ -508,10 +528,10 @@ async def recent_workouts(x_init_data: str = Header(alias="x-init-data")):
 
 
 class UpdateSetRequest(BaseModel):
-    actual_weight: float
-    reps: int
-    rpe: float = 8.0
-    notes: str | None = None
+    actual_weight: float = Field(ge=0, le=1000)
+    reps: int = Field(ge=1, le=100)
+    rpe: float = Field(ge=0, le=10, default=8.0)
+    notes: str | None = Field(None, max_length=500)
 
 
 @app.patch("/api/workout/set/{set_id}")
@@ -611,7 +631,7 @@ async def water_today(x_init_data: str = Header(alias="x-init-data")):
     user = await get_user(user_id)
     notif_water = bool(user.get("notif_water", 1)) if user else True
     goal = (user.get("water_goal") or WATER_GOAL) if user else WATER_GOAL
-    glasses = await get_water_today(user_id, today())
+    glasses = await get_water_today(user_id, user_today(user.get("utc_offset") or 0 if user else 0))
     return {"glasses": glasses, "goal": goal, "notif_water": notif_water}
 
 
@@ -620,7 +640,7 @@ async def water_add(x_init_data: str = Header(alias="x-init-data")):
     user_id = validate_init_data(x_init_data)
     user = await get_user(user_id)
     goal = (user.get("water_goal") or WATER_GOAL) if user else WATER_GOAL
-    glasses = await add_water_glass(user_id, today())
+    glasses = await add_water_glass(user_id, user_today(user.get("utc_offset") or 0 if user else 0))
     return {"glasses": glasses, "goal": goal}
 
 
@@ -638,9 +658,10 @@ async def log_food_photo_upload(
     from services.ai_service import parse_food_photo
     result = _cap_kbju(await parse_food_photo(image_bytes))
     user = await get_user(user_id)
-    meal_type = _detect_meal_type(utc_offset=user.get("utc_offset", 0) if user else 0)
+    utc_offset = user.get("utc_offset", 0) if user else 0
+    meal_type = _detect_meal_type(utc_offset=utc_offset)
     entry_id = await log_food(
-        user_id, today(),
+        user_id, user_today(utc_offset),
         result.get("description", "Блюдо с фото"),
         result["calories"], result["protein"], result["carbs"], result["fat"],
         meal_type=meal_type,
@@ -673,9 +694,10 @@ async def log_food_voice(
         raise HTTPException(status_code=422, detail="Не удалось распознать речь")
     result = _cap_kbju(await parse_food(text))
     user = await get_user(user_id)
-    meal_type = _detect_meal_type(text, utc_offset=user.get("utc_offset", 0) if user else 0)
+    utc_offset = user.get("utc_offset", 0) if user else 0
+    meal_type = _detect_meal_type(text, utc_offset=utc_offset)
     entry_id = await log_food(
-        user_id, today(),
+        user_id, user_today(utc_offset),
         result.get("description", text[:200]),
         result["calories"], result["protein"], result["carbs"], result["fat"],
         meal_type=meal_type,
@@ -725,8 +747,9 @@ async def nutrition_today(x_init_data: str = Header(alias="x-init-data")):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    raw_entries = await get_day_food_entries(user_id, today())
-    totals = await get_day_nutrition(user_id, today())
+    utc_offset = user.get("utc_offset") or 0
+    raw_entries = await get_day_food_entries(user_id, user_today(utc_offset))
+    totals = await get_day_nutrition(user_id, user_today(utc_offset))
 
     from datetime import datetime as _dt, timedelta as _td
     utc_offset = user.get("utc_offset") or 0
@@ -787,9 +810,10 @@ async def log_food_endpoint(body: LogFoodRequest, x_init_data: str = Header(alia
     user = await get_user(user_id)
     from services.ai_service import parse_food
     result = _cap_kbju(await parse_food(body.text))
-    meal_type = _detect_meal_type(body.text, utc_offset=user.get("utc_offset", 0) if user else 0)
+    utc_offset = user.get("utc_offset", 0) if user else 0
+    meal_type = _detect_meal_type(body.text, utc_offset=utc_offset)
     entry_id = await log_food(
-        user_id, today(),
+        user_id, user_today(utc_offset),
         result.get("description", body.text[:100]),
         result["calories"], result["protein"], result["carbs"], result["fat"],
         meal_type=meal_type,
@@ -944,28 +968,35 @@ async def nutrition_templates(x_init_data: str = Header(alias="x-init-data")):
     return {"templates": foods}
 
 
+class LogTemplateRequest(BaseModel):
+    description: str = Field(min_length=1, max_length=300)
+    calories: float = Field(ge=0, le=10000)
+    protein: float = Field(ge=0, le=1000)
+    carbs: float = Field(ge=0, le=1000)
+    fat: float = Field(ge=0, le=1000)
+
+
 @app.post("/api/nutrition/log-template")
-async def log_template(body: LogFoodRequest, x_init_data: str = Header(alias="x-init-data")):
-    """Log a food using a pre-parsed template (skip AI parsing, use stored КБЖУ)."""
+async def log_template(body: LogTemplateRequest, x_init_data: str = Header(alias="x-init-data")):
+    """Log a food using stored template КБЖУ — no AI call."""
     user_id = validate_init_data(x_init_data)
     user = await get_user(user_id)
-    from services.ai_service import parse_food
-    result = _cap_kbju(await parse_food(body.text))
-    meal_type = _detect_meal_type(body.text, utc_offset=user.get("utc_offset", 0) if user else 0)
+    utc_offset = user.get("utc_offset", 0) if user else 0
+    meal_type = _detect_meal_type(body.description, utc_offset=utc_offset)
     entry_id = await log_food(
-        user_id, today(),
-        result.get("description", body.text[:100]),
-        result["calories"], result["protein"], result["carbs"], result["fat"],
+        user_id, user_today(utc_offset),
+        body.description,
+        body.calories, body.protein, body.carbs, body.fat,
         meal_type=meal_type,
     )
     return {
         "id": entry_id,
         "meal_type": meal_type,
-        "description": result.get("description", body.text[:100]),
-        "calories": round(result["calories"]),
-        "protein": round(result["protein"], 1),
-        "carbs": round(result["carbs"], 1),
-        "fat": round(result["fat"], 1),
+        "description": body.description,
+        "calories": round(body.calories),
+        "protein": round(body.protein, 1),
+        "carbs": round(body.carbs, 1),
+        "fat": round(body.fat, 1),
     }
 
 
