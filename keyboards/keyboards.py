@@ -83,6 +83,7 @@ def _fmt_rest(seconds: int) -> str:
 def set_input_keyboard(
     cur_weight: float, cur_reps: int, cur_rpe: float,
     plan_weight: float, cur_rest: int = 0, show_warmup: bool = False,
+    num_logged: int = 0,
 ) -> InlineKeyboardMarkup:
     """Inline-клавиатура для ввода подхода: вес±, повторы±, RPE, отдых±, подтвердить."""
     rows = []
@@ -131,7 +132,28 @@ def set_input_keyboard(
         InlineKeyboardButton(text="🏁 Завершить", callback_data="finish_workout"),
     ]
     rows.append(tools)
+    if num_logged > 0:
+        rows.append([InlineKeyboardButton(text=f"✏️ Изменить подход ({num_logged})", callback_data="edit_sets_list")])
     rows.append([InlineKeyboardButton(text="🏠 Главное меню", callback_data="workout_to_main")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def edit_sets_keyboard(all_sets: list[dict]) -> InlineKeyboardMarkup:
+    """Список завершённых подходов для редактирования."""
+    rows = []
+    for i, s in enumerate(all_sets):
+        ex_name = s["exercise"]
+        if len(ex_name) > 18:
+            ex_name = ex_name[:17] + "…"
+        w = s["actual_weight"]
+        w_str = str(int(w)) if w == int(w) else str(w)
+        rpe = s.get("rpe")
+        rpe_str = f" R{int(rpe) if rpe and rpe == int(rpe) else round(rpe, 1)}" if rpe else ""
+        rows.append([InlineKeyboardButton(
+            text=f"{i + 1}. {ex_name}: {w_str}кг×{s['reps']}{rpe_str}",
+            callback_data=f"edit_set:{i}",
+        )])
+    rows.append([InlineKeyboardButton(text="↩️ Назад", callback_data="edit_sets_cancel")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

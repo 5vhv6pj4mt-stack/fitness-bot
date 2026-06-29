@@ -618,16 +618,7 @@ async def get_workout_set(set_id: int) -> dict | None:
             return dict(row) if row else None
 
 
-async def update_workout_set(set_id: int, weight: float, reps: int, rpe: float):
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "UPDATE workout_sets SET actual_weight=?, reps=?, rpe=? WHERE id=?",
-            (weight, reps, rpe, set_id)
-        )
-        await db.commit()
-
-
-async def update_workout_set(set_id: int, actual_weight: float, reps: int, rpe: float, notes: str | None):
+async def update_workout_set(set_id: int, actual_weight: float, reps: int, rpe: float, notes: str | None = None):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "UPDATE workout_sets SET actual_weight=?, reps=?, rpe=?, notes=? WHERE id=?",

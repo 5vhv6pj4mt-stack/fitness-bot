@@ -11,12 +11,13 @@ from database.db import (get_user, update_user, create_workout, save_set,
                           update_workout_progress, get_active_workout, discard_all_active_workouts,
                           update_exercise_weight, delete_workout_set,
                           check_exercise_pr, get_exercise_progression_hint,
-                          get_workout_streak, get_last_exercise_set, get_overtraining_risk)
+                          get_workout_streak, get_last_exercise_set, get_overtraining_risk,
+                          update_workout_set, recalculate_workout_totals)
 from keyboards.keyboards import (main_menu, workout_menu, workout_logging_keyboard,
                                   finish_keyboard, rest_timer_keyboard, rest_input_keyboard,
-                                  set_input_keyboard, next_set_keyboard)
+                                  set_input_keyboard, next_set_keyboard, edit_sets_keyboard)
 from services.ai_service import analyze_workout, get_exercise_technique, get_exercise_gif, parse_voice_set, transcribe_voice
-from states.states import WorkoutLogging
+from states.states import WorkoutLogging, EditWorkout
 from handlers.nav import send_nav, track_msg
 
 router = Router()
@@ -211,7 +212,7 @@ def _build_set_prompt(data: dict) -> tuple[str, "InlineKeyboardMarkup"]:
     show_warmup = set_index == 0 and ex["weight"] > 0
     is_last_set = set_index == ex["sets"] - 1
     cur_rest = 0 if is_last_set else data.get("current_rest", 0)
-    kb = set_input_keyboard(cur_w, cur_r, cur_rpe, ex["weight"], cur_rest, show_warmup)
+    kb = set_input_keyboard(cur_w, cur_r, cur_rpe, ex["weight"], cur_rest, show_warmup, num_logged=len(all_sets))
     return text, kb
 
 _WARMUP_SCHEMES = {
@@ -453,7 +454,7 @@ async def _advance_after_set(
     ex = exercises[ex_index]
 
     set_id = await save_set(workout_id, ex["exercise"], set_index + 1, ex["weight"], weight, reps, rpe, notes)
-    all_sets.append({"exercise": ex["exercise"], "actual_weight": weight, "reps": reps, "rpe": rpe})
+    all_sets.append({"exercise": ex["exercise"], "actual_weight": weight, "reps": reps, "rpe": rpe, "set_id": set_id})
 
     if data.get("notify_pr", 1):
         pr_type = await check_exercise_pr(message.chat.id, ex["exercise"], weight, reps, workout_id)
@@ -820,7 +821,7 @@ async def resume_workout(callback: CallbackQuery, state: FSMContext):
     # Восстанавливаем already logged sets
     logged_sets = await get_workout_sets(workout_id)
     all_sets = [{"exercise": s["exercise"], "actual_weight": s["actual_weight"],
-                 "reps": s["reps"], "rpe": s["rpe"]} for s in logged_sets]
+                 "reps": s["reps"], "rpe": s["rpe"], "set_id": s["id"]} for s in logged_sets]
 
     ex_index = active.get("ex_index", 0)
     set_index = active.get("set_index", 0)
@@ -858,7 +859,8 @@ async def resume_workout(callback: CallbackQuery, state: FSMContext):
     rest_show = 0 if is_last_set else cur_rest
     await callback.message.edit_text(
         text, parse_mode="HTML",
-        reply_markup=set_input_keyboard(cur_w, cur_r, cur_rpe, ex["weight"], rest_show, show_warmup),
+        reply_markup=set_input_keyboard(cur_w, cur_r, cur_rpe, ex["weight"], rest_show, show_warmup,
+                                        num_logged=len(all_sets)),
     )
     await state.update_data(prompt_msg_id=callback.message.message_id)
     await callback.answer()
@@ -1116,6 +1118,94 @@ async def show_progress(message: Message):
             f"   🏋️ Тоннаж: {w['total_tonnage']:.0f}кг · RPE: {w['avg_rpe']:.1f}"
         )
     await send_nav(message, "\n".join(lines), reply_markup=workout_menu(day_label, week_label))
+
+
+@router.callback_query(WorkoutLogging.logging_sets, F.data == "edit_sets_list")
+async def cb_edit_sets_list(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    all_sets = data.get("all_sets", [])
+    if not all_sets:
+        await callback.answer("Нет завершённых подходов", show_alert=True)
+        return
+    await callback.message.answer(
+        "✏️ <b>Выбери подход для редактирования:</b>",
+        parse_mode="HTML",
+        reply_markup=edit_sets_keyboard(all_sets),
+    )
+    await callback.answer()
+
+
+@router.callback_query(WorkoutLogging.logging_sets, F.data.startswith("edit_set:"))
+async def cb_edit_set_select(callback: CallbackQuery, state: FSMContext):
+    idx = int(callback.data.split(":", 1)[1])
+    data = await state.get_data()
+    all_sets = data.get("all_sets", [])
+    if idx >= len(all_sets):
+        await callback.answer("Подход не найден", show_alert=True)
+        return
+    s = all_sets[idx]
+    rpe = s.get("rpe")
+    rpe_str = f" RPE{_fmt_weight(rpe)}" if rpe else ""
+    await state.update_data(editing_set_idx=idx)
+    await state.set_state(EditWorkout.editing_set)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.message.answer(
+        f"✏️ <b>{s['exercise']}</b>\n"
+        f"Сейчас: <code>{_fmt_weight(s['actual_weight'])}кг × {s['reps']} повт.{rpe_str}</code>\n\n"
+        "Введи новые значения:\n<code>вес×повторы RPE</code>\n"
+        "Например: <code>82.5x5 RPE8</code> или <code>80x6</code>",
+        parse_mode="HTML",
+    )
+    await callback.answer()
+
+
+@router.callback_query(WorkoutLogging.logging_sets, F.data == "edit_sets_cancel")
+async def cb_edit_sets_cancel(callback: CallbackQuery, state: FSMContext):
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.answer()
+
+
+@router.message(EditWorkout.editing_set)
+async def handle_edit_set_input(message: Message, state: FSMContext):
+    parsed = parse_set_input(message.text or "")
+    if not parsed:
+        await message.answer(
+            "❌ Не понял формат. Введи: <code>80x5 RPE8</code> или <code>80x6</code>",
+            parse_mode="HTML",
+        )
+        return
+    weight, reps, rpe, notes = parsed
+    if rpe is None:
+        rpe = 8.0
+    data = await state.get_data()
+    idx = data.get("editing_set_idx")
+    all_sets = data.get("all_sets", [])
+    if idx is None or idx >= len(all_sets):
+        await message.answer("❌ Ошибка: подход не найден. Тренировка продолжается.")
+        await state.set_state(WorkoutLogging.logging_sets)
+        return
+    s = all_sets[idx]
+    set_id = s.get("set_id")
+    if not set_id:
+        await message.answer("❌ Ошибка: ID подхода не сохранён. Обнови бот и попробуй снова.")
+        await state.set_state(WorkoutLogging.logging_sets)
+        return
+    await update_workout_set(set_id, weight, reps, rpe, notes)
+    await recalculate_workout_totals(data["workout_id"])
+    all_sets[idx] = {**s, "actual_weight": weight, "reps": reps, "rpe": rpe}
+    await state.update_data(all_sets=all_sets, editing_set_idx=None)
+    await state.set_state(WorkoutLogging.logging_sets)
+    rpe_str = f" RPE{_fmt_weight(rpe)}"
+    await message.answer(
+        f"✅ Подход обновлён: <b>{_fmt_weight(weight)}кг × {reps} повт.{rpe_str}</b>",
+        parse_mode="HTML",
+    )
 
 
 @router.callback_query(F.data.startswith("undo_set:"))
