@@ -583,7 +583,7 @@ async def get_last_workouts(user_id: int, limit: int = 5) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM workouts WHERE user_id=? AND is_finished=1 ORDER BY date DESC LIMIT ?",
+            "SELECT * FROM workouts WHERE user_id=? AND is_finished=1 ORDER BY date DESC, id DESC LIMIT ?",
             (user_id, limit)
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
@@ -653,7 +653,7 @@ async def get_recent_workouts(user_id: int, limit: int = 10) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT * FROM workouts WHERE user_id=? AND is_finished=1 ORDER BY date DESC LIMIT ?",
+            "SELECT * FROM workouts WHERE user_id=? AND is_finished=1 ORDER BY date DESC, id DESC LIMIT ?",
             (user_id, limit)
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
