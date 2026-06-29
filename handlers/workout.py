@@ -487,9 +487,10 @@ async def _advance_after_set(
         return
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    undo_kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="↩️ Отменить подход", callback_data=f"undo_set:{set_id}")
-    ]])
+    undo_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="↩️ Отменить подход", callback_data=f"undo_set:{set_id}")],
+        [InlineKeyboardButton(text="✏️ Изменить подход", callback_data="edit_sets_list")],
+    ])
 
     next_ex_obj = exercises[next_ex]
     is_new_ex = next_set == 0
@@ -1118,6 +1119,20 @@ async def show_progress(message: Message):
             f"   🏋️ Тоннаж: {w['total_tonnage']:.0f}кг · RPE: {w['avg_rpe']:.1f}"
         )
     await send_nav(message, "\n".join(lines), reply_markup=workout_menu(day_label, week_label))
+
+
+@router.message(WorkoutLogging.logging_sets, F.text == "✏️ Изменить тренировку")
+async def edit_workout_sets_from_menu(message: Message, state: FSMContext):
+    data = await state.get_data()
+    all_sets = data.get("all_sets", [])
+    if not all_sets:
+        await message.answer("Пока нет завершённых подходов.")
+        return
+    await message.answer(
+        "✏️ <b>Выбери подход для редактирования:</b>",
+        parse_mode="HTML",
+        reply_markup=edit_sets_keyboard(all_sets),
+    )
 
 
 @router.callback_query(WorkoutLogging.logging_sets, F.data == "edit_sets_list")
