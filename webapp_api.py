@@ -477,6 +477,30 @@ async def finish_workout_endpoint(
     }
 
 
+@app.get("/api/workout/{workout_id}/sets")
+async def workout_sets_endpoint(
+    workout_id: int,
+    x_init_data: str = Header(alias="x-init-data"),
+):
+    user_id = validate_init_data(x_init_data)
+    workout = await get_workout_by_id(workout_id)
+    if not workout or workout["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    sets = await get_workout_sets(workout_id)
+    return [
+        {
+            "id": s["id"],
+            "exercise": s["exercise"],
+            "set_number": s["set_number"],
+            "actual_weight": s["actual_weight"],
+            "reps": s["reps"],
+            "rpe": s["rpe"],
+            "notes": s.get("notes"),
+        }
+        for s in sets
+    ]
+
+
 @app.get("/api/workout/{workout_id}/analysis")
 async def workout_analysis_endpoint(
     workout_id: int,
@@ -900,7 +924,7 @@ async def program_endpoint(x_init_data: str = Header(alias="x-init-data")):
             matching = [w for w in recent_workouts
                         if w["day_type"] == day_type and w["week_type"] == week_type]
             w = matching[0] if matching else None
-            workout_info = {"date": w["date"], "tonnage": round(w["total_tonnage"] or 0)} if w else None
+            workout_info = {"id": w["id"], "date": w["date"], "tonnage": round(w["total_tonnage"] or 0)} if w else None
         elif i == current_day_index:
             status = "current"
             workout_info = None
