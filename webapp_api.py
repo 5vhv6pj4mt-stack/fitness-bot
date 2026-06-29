@@ -439,24 +439,25 @@ async def finish_workout_endpoint(
 
     await finish_workout(body.workout_id, tonnage, avg_rpe)
 
-    # Продвигаем программу
-    day_types = await get_user_day_types(user_id, user["current_week_type"])
-    week_types = await get_user_week_types(user_id)
-    next_day_index = user["current_day_index"] + 1
-    next_week_type = user["current_week_type"]
-    next_week_num = user["current_week"]
+    # Продвигаем программу только если залогирован хотя бы один подход
+    if body.sets:
+        day_types = await get_user_day_types(user_id, user["current_week_type"])
+        week_types = await get_user_week_types(user_id)
+        next_day_index = user["current_day_index"] + 1
+        next_week_type = user["current_week_type"]
+        next_week_num = user["current_week"]
 
-    if next_day_index >= len(day_types):
-        next_day_index = 0
-        if week_types and user["current_week_type"] in week_types:
-            idx = week_types.index(user["current_week_type"])
-            next_week_type = week_types[(idx + 1) % len(week_types)]
-        next_week_num += 1
+        if next_day_index >= len(day_types):
+            next_day_index = 0
+            if week_types and user["current_week_type"] in week_types:
+                idx = week_types.index(user["current_week_type"])
+                next_week_type = week_types[(idx + 1) % len(week_types)]
+            next_week_num += 1
 
-    await update_user(user_id,
-                      current_day_index=next_day_index,
-                      current_week_type=next_week_type,
-                      current_week=next_week_num)
+        await update_user(user_id,
+                          current_day_index=next_day_index,
+                          current_week_type=next_week_type,
+                          current_week=next_week_num)
 
     sets_for_analysis = [
         {"exercise": s.exercise, "actual_weight": s.actual_weight, "reps": s.reps, "rpe": s.rpe}

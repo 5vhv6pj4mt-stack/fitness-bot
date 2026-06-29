@@ -971,8 +971,8 @@ async def finish_workout_flow(message: Message, state: FSMContext):
 
     await finish_workout(workout_id, tonnage, avg_rpe)
 
-    # Продвигаем программу только если тренировка не была уже завершена через webapp
-    if not already_finished:
+    # Продвигаем программу только если есть подходы и тренировка не завершена ранее
+    if not already_finished and all_sets:
         day_index = user["current_day_index"]
         current_week_type = user["current_week_type"]
         day_types = await get_user_day_types(user["user_id"], current_week_type)
